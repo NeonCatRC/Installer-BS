@@ -14,6 +14,5 @@ source "$BS_ROOT/lib/i18n.sh"
 # shellcheck source=lib/core.sh
 source "$BS_ROOT/lib/core.sh"
 
-# TODO(WP1): replace this skeleton notice with: core::dispatch "$@"
-ui::info "Installer-BS skeleton is in place. Nothing is wired yet."
-ui::info "Work packages and the plan: docs/dev/AGENT-TASKS.md"
+i18n::load
+core::dispatch "$@"
