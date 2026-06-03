@@ -1,114 +1,146 @@
-## Installer-SH [![Github Releases](https://img.shields.io/github/downloads/Shedou/Installer-SH/total.svg)](https://github.com/Shedou/Installer-SH/releases)
+# Installer-BS
 
-Installer-SH is a standalone installation package for Linux and FreeBSD applications, allowing you to distribute and install programs even on standalone computers with different architectures.
+**Окончательное решение проблемы зависимостей в Linux.** (нет.)
 
-```
-У нас было две большие папочки с форками apt, pacman, brew и nix на GitHub, но это не главное... 
-У нас было также 75 готовых функций для парсинга выводов пакет-менеджеров, 
-200 гигабайт кэша с каждой версией glibc когда-либо скомпилированной, 
-четыре системных блока с миллионом строк bash-кода, 
-половину документации из StackOverflow 2015 года, 
-2 VPN чтобы скачать исходники с мёртвых сайтов, и огромный файл конфига с 500 строками sed регулярных выражений...
-Честно говоря, я не помню как мы вообще смогли это всё заткнуть в один скрипт на 15 килобайт. 
-Но главное — у нас была АБСОЛЮТНАЯ, СВЯЩЕННАЯ убежденность в том, что мы наконец РАЗЛОМАЛИ проблему зависимостей Linux. 
-Что если мы просто проигнорируем конфликты версий, заставим LD_LIBRARY_PATH указывать на 47 разных директорий одновременно и добавим функцию fuck_it_just_recompile() — тогда система СТАНЕТ работать.
-Это был наш Святой Грааль. Нерешаемая задача в одном bash-скрипте. Когда мы запустили его в первый раз и получили Segmentation fault — мы знали, что мы на правильном пути.
-```
+Самораспаковывающийся формат пакетов на чистом Bash. Пародийный — но полностью рабочий — форк
+[Installer-SH](https://github.com/Shedou/Installer-SH): тот же здравый смысл, минус говнокод,
+плюс честность. `BS` расшифровывается тремя способами, и все три верны: **B**ull**S**hit,
+**Ba**sh **S**cript, **B**undled **S**oftware.
 
-![Preview.](https://github.com/Shedou/Installer-SH/blob/main/Installer-SH/Preview.jpg)
+---
 
-The current repository is for active development of Installer-SH, it contains the latest version of the installation package, however it may be unstable.
+## Предыстория
 
-Stable and archived versions are available on the [downloads page](https://github.com/Shedou/Installer-SH/releases) or in the "[Installer-SH-Archive](https://github.com/Shedou/Installer-SH-Archive)" repository.
+У них был монолит на 2000 строк. Восемь предсобранных бинарей в каждом пакете. Вкомпиленный
+прямо в git чужой 7-Zip. MD5 в роли «защиты целостности». И скрипт, который `sed`-ом переписывал
+сам себя. А поверх всего — священная, абсолютная уверенность, что вот это и есть **«укрощение ада
+зависимостей Linux»**.
 
-### Usage: Run "installer.sh" and follow the instructions, or run with "installer.sh -silent" for a silent installation. Run "installer.sh -help" for help.
+Мы посмотрели на это и сделали то же самое. На одной команде, одном манифесте и без единого бинаря
+в репозитории. Потому что «ад зависимостей» — это не про монолит на bash. А про то, что половину
+громких обещаний индустрии закрывает одно скучное слово: **бандлинг**.
 
-Applications packaged in Installer-SH format can be found in the "[Chimbalix-Software-Catalog](https://github.com/Shedou/Chimbalix-Software-Catalog)" repository.
+## Что это на самом деле
 
-Comparison of software distribution formats [tested in different Linux and FreeBSD](https://overclockers.ru/blog/Hard-Workshop/show/256127/Bol-shoe-sravnenie-i-testirovanie-formatov-ustanovki-PO-v-distributivah-Linux-i-FreeBSD-x86-x64) distributions (installing and running the [game "2048"](https://github.com/Shedou/Chimbalix-Software-Catalog/releases/tag/2048c103mpa)):
+Installer-BS — это `makeself` с человеческим лицом. Берёт твою готовую программу плюс маленький
+манифест и собирает **один исполняемый файл `.bs`**:
 
-![Preview.](https://github.com/Shedou/Installer-SH/blob/main/Installer-SH/field-testing-of-formats-2026-05-24.png)
+- запустил — программа работает **портативно** (как AppImage), распаковываясь в XDG-кэш;
+- захотел — `--install` положит ярлык в меню по стандартам **XDG**, лаунчер в `~/.local/bin`;
+- надоело — `--uninstall` уберёт всё подчистую.
 
-## Features of Installer-SH:
+Никаких папок в корне твоей файловой системы. Мы не «решили» проблему зависимостей — её нельзя
+решить. Мы кладём нужные `.so` рядом с бинарём. Это называется бандлинг, и да, это ровно то, что
+делает половина твоих любимых форматов.
 
-* Ease of use: Installing programs using Installer-SH does not require root privileges by default. Root privileges may be required when installing software in system mode for all users.
+## Громкие заявления (и что за ними на самом деле)
 
-* Easy management: Installed applications can be easily removed at any time.
+| Мы заявляем (гордо) | Что под капотом (честно) |
+|---|---|
+| Раз и навсегда **УКРОЩАЕМ ад зависимостей** | Кладём `.so` рядом с бинарём. Ад на месте — просто завёрнут в `tar.xz` |
+| **ПОГЛОЩАЕМ** формат AppImage | Это tar внутри bash. AppImage — тоже. Мы не лучше, мы честнее об этом |
+| **АБСОЛЮТНАЯ** целостность пакета | `sha256` рядом, если важно. От битой докачки, а не от злоумышленника |
+| Работает на **ЛЮБОЙ** системе | На любой, где есть `bash` и `tar`. То есть на Linux. Который мы хотя бы не называем мёртвым |
+| **РЕВОЛЮЦИЯ** в дистрибуции ПО | `makeself` знал этот трюк в 1998-м. Мы просто причесали и не врём |
 
-* Reliability: The installation package contains several independent data integrity checks, which allows detecting archives damaged during copying before they are installed on the system.
+## Чем лучше предшественника
 
-* Independence: you can distribute and install software without an internet connection.
+| Installer-SH | Installer-BS |
+|---|---|
+| монолит на 2000 строк | `bs` + модули `lib/`, одна ответственность на файл |
+| сборка = правка скрипта руками | `bs build <каталог>` + декларативный `manifest` |
+| 8 бинарей в одном пакете | 1 пакет = 1 архитектура (она в имени файла) |
+| `/portsoft` в корне ФС | XDG / `/opt` / `/usr/local`, по стандартам |
+| MD5-«защита» + `sed`-самомодификация | `sha256` честно; данные живут в данных |
+| `source` чужих файлов (RCE на ровном месте) | манифест парсится **как данные**, без `eval` |
+| «мультиплатформенность» с мёртвым FreeBSD | целимся в Linux честно; BSD — за модулем на будущее |
+| вкомпиленный 7-Zip и плейсхолдеры в git | ноль бинарей в репозитории, системный `xz`/`tar` |
+| тест = смонтируй tmpfs в виртуалке руками | `tests/e2e.sh`: 19 проверок, без рута, на автомате |
 
-* Isolation: The default format stores configuration files and other junk generated during software use in a separate directory next to the program. It's also possible to switch to the classic mode, using the user's home directory for storing configuration files.
+Подробный разбор каждого греха — в [**Музее ошибок**](docs/MUSEUM.md) (15 залов).
 
-* Portability: You can easily make a backup copy of the program with all settings and data (menu shortcuts are not saved) if it was installed in standard mode with the configuration files moved to a dedicated directory.
+## Установка
 
-* Compatibility: The installation package does not require any specific dependencies or system libraries. Basic system utilities such as bash, tar, and Coreutils are required.
+Зависимости: `bash`, `coreutils`, `tar`, `xz` (или `gzip`). Собирать нечего.
 
-* Multiplatform: A single installation package can install the program on various Linux and FreeBSD distributions.
-
-* Multi-architecture: A single installation package can install the program on distributions of different architectures (x86, x86_64, amd64, aarch64, and others).
-
-* Different versions: Installer-SH can install different versions of the same program on the same system.
-
-* Flexible: Depending on the needs, the software developer or packager can customize the installation package as required.
-
-* Specifications: For maximum compatibility and convenience, the installation format complies with the PortSoft (https://github.com/Shedou/PortSoft) and XDG Desktop (https://specifications.freedesktop.org) specifications.
-
-* Self-sufficiency: Installer-SH can independently prepare the necessary foundation for further work in accordance with specifications.
-
-* Compression formats: By default, the most compatible compression format tar.xz is used, but at the discretion of the packer, the much more powerful 7-Zip format can be used to compress the program.
-
-* Silent Mode: You can perform a bulk installation of multiple programs in Installer-SH format using the "-silent" parameter.
-
-* Help: You can run "installer.sh" with the "-h" parameter for help with additional usage options. Also, please refer to the developer instructions in the README file in the installer directory if you plan to package your application in Installer-SH format.
-
-Note: It is recommended to use the latest versions of the format when creating new software installation packages. Multiplatform and multiarchitecture support in a single package begins with Installer-SH 2.8. FreeBSD support begins with Installer-SH 2.6. Silent mode support begins with Installer-SH 2.3. Isolation may not solve all the problems of very poorly designed software. Software compatibility depends on the software developer, not the installation package.
-
-## License Installer-SH
-```
-MIT License
-
-Copyright (c) 2024-2026 Андрей Цымбалов (Chimbal)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+```sh
+git clone https://github.com/NeonCatRC/Installer-BS
+cd Installer-BS
+./bs --help          # справка (понимает русский по $LANG)
 ```
 
-## License 7-Zip
-Detailed information about the 7-Zip license can be found in the file at "Installer-SH/installer-data/tools/7zip/License.txt"
+По желанию — положи `bs` в `PATH`.
+
+## Собери свой пакет
+
+Возьми готовую программу, опиши её манифестом, собери. Пример — в [`examples/hello`](examples/hello):
+
+```sh
+# manifest:
+#   name    = hello
+#   version = 1.0.0
+#   arch    = x86_64
+#   os      = linux
+#   exec    = bin/hello
+
+./bs build examples/hello
+#   ok   built hello-1.0.0-x86_64.bs
+#   ::   size: 9 KiB
 ```
-  ~~~~~~~~~~~~~~~~~~~~~~~~~
-  License for use and distribution
-  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  7-Zip Copyright (C) 1999-2024 Igor Pavlov.
+На выходе — `hello-1.0.0-x86_64.bs` и `.sha256` рядом. Полная спецификация манифеста и формата —
+в [`docs/PACKAGE-FORMAT.md`](docs/PACKAGE-FORMAT.md).
 
-  The licenses for 7zz and 7zzs files are:
+## Запусти пакет
 
-         - The "GNU LGPL" as main license for most of the code
-         - The "GNU LGPL" with "unRAR license restriction" for some code
-         - The "BSD 3-clause License" for some code
-         - The "BSD 2-clause License" for some code
-
-  Redistributions in binary form must reproduce related license information from this file.
-
-  Note:
-    You can use 7-Zip on any computer, including a computer in a commercial
-    organization. You don't need to register or pay for 7-Zip.
+```sh
+./hello-1.0.0-x86_64.bs                 # портативно, без установки
+./hello-1.0.0-x86_64.bs --install       # в меню пользователя (XDG)
+sudo ./hello-1.0.0-x86_64.bs --install --system   # системно (/opt, /usr/local)
+./hello-1.0.0-x86_64.bs --uninstall     # снять подчистую
+./hello-1.0.0-x86_64.bs --info          # метаданные
+./hello-1.0.0-x86_64.bs --extract DIR   # просто распаковать
 ```
+
+Управляющие флаги действуют только как **первый** аргумент; всё остальное уходит приложению.
+
+## Ответ хейтерам
+
+Автор оригинала любую критику записывал в «токсичную дедовщину» и «диванных экспертов». Мы
+поступим иначе — согласимся:
+
+- **«Это просто `makeself` с русскими комментариями».** Да. Спасибо, что заметили — так и задумано.
+- **«Bash — неподходящий язык для пакетного менеджера».** А это и не пакетный менеджер. Это
+  самораспаковщик. `apt` мы не хороним.
+- **«Бандлинг раздувает размер».** Да, как у AppImage и Flatpak. За удобство платят мегабайтами.
+- **«Ничего нового вы не изобрели».** Верно. Мы и не обещали. Мы обещали сделать **аккуратно**.
+
+Критика — это не травля. Нашёл баг — [присылай PR](https://github.com/NeonCatRC/Installer-BS).
+У нас модульно и не страшно трогать.
+
+## Что думает ИИ о Installer-BS
+
+Автор оригинала однажды скормил Google AI только лестные скриншоты, пока тот не «признал» гениальность
+его проектов. Мы спросили честно и приводим вердикт без купюр:
+
+> «Installer-BS — аккуратно сделанный self-extracting installer на bash. Он не изобретает ничего
+> нового (makeself, AppImage), но базовые вещи делает правильно: ставит по XDG, не мусорит в корне,
+> парсит манифест как данные. Это не революция в дистрибуции ПО — это просто нормально написанный
+> скрипт.»
+
+Мы не спорим. Мы киваем.
+
+## Ограничения (честно, без звёздочек мелким шрифтом)
+
+- **Только Linux.** BSD вынесен за модуль на будущее. В отличие от оригинала, который «поддерживает»
+  FreeBSD — ОС, которую сам же автор назвал «ещё более мёртвой, чем Linux».
+- **1 пакет = 1 архитектура.** Нужен arm — собери второй файл. Это фича, а не баг.
+- **Бандлинг либ требует нативного хоста** (`ldd` резолвит хостовым загрузчиком).
+- **Это НЕ замена `apt`/`dnf`/`flatpak`.** Нишевый портативный формат, и только.
+- **`sha256` рядом — от битой докачки, не крипто-подпись.** Мы честно так и пишем.
+
+## Лицензия и благодарность
+
+MIT. Installer-BS — форк проекта **Installer-SH**, © Андрей Цымбалов (Chimbal). Идея портативного
+софта без рута — здравая, и за неё спасибо. Мы смеёмся над архаикой кода и пафосом обещаний, а не
+над человеком. Оригинальный копирайт сохранён в [LICENSE](LICENSE) и [NOTICE](NOTICE).
