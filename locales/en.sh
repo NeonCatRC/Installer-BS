@@ -7,8 +7,8 @@ declare -gA BS_STR_EN=(
 
 	[help_usage]="Usage: bs <command> [options]"
 	[help_commands]="Commands:"
-	[help_build]="Build a .bs package from a source dir + manifest (WP3)."
-	[help_info]="Show a .bs package's manifest (WP2)."
+	[help_build]="Build a .bs package from a source dir + manifest."
+	[help_info]="Show a .bs package's manifest."
 	[help_version]="Print version and detected platform."
 	[help_help]="Show this help."
 	[help_options]="Options:"
