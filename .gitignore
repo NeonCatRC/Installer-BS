@@ -1,0 +1,14 @@
+# Build output (packages are artifacts, never committed)
+*.bs
+*.sha256
+/build/
+/dist/
+
+# Transient extraction / packing
+*.tmp
+/tmp/
+
+# Editor / OS noise
+*~
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+# Minimal Installer-BS example package. Built and exercised by tests/e2e.sh.
+name         = hello
+pretty_name  = Hello BS
+version      = 1.0.0
+arch         = x86_64
+os           = linux
+exec         = bin/hello
+comment      = Minimal Installer-BS example package
+categories   = Utility;
+terminal     = true
+bundle_libs  = false
+isolate_home = false

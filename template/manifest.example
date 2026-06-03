@@ -1,0 +1,18 @@
+# Installer-BS package manifest (format 1). Parsed as data, never executed.
+# Reference: docs/dev/PACKAGE-FORMAT.md.
+
+name         = example
+pretty_name  = Example App
+version      = 1.0.0
+arch         = x86_64
+os           = linux
+exec         = bin/example
+
+comment      = One-line description shown in the menu
+categories   = Utility;
+icon         = share/example.svg
+terminal     = false
+bundle_libs  = false
+isolate_home = false
+maintainer   =
+homepage     =
