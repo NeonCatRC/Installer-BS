@@ -13,6 +13,10 @@ source "$BS_ROOT/lib/ui.sh"
 source "$BS_ROOT/lib/i18n.sh"
 # shellcheck source=lib/manifest.sh
 source "$BS_ROOT/lib/manifest.sh"
+# shellcheck source=lib/bundle.sh
+source "$BS_ROOT/lib/bundle.sh"
+# shellcheck source=lib/pack.sh
+source "$BS_ROOT/lib/pack.sh"
 # shellcheck source=lib/core.sh
 source "$BS_ROOT/lib/core.sh"
 

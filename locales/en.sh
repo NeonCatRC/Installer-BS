@@ -25,7 +25,10 @@ declare -gA BS_STR_EN=(
 	[err_unsupported_platform]="Unsupported platform: %s"
 	[err_unknown_command]="Unknown command: %s. Try 'bs --help'."
 	[err_unknown_flag]="Unknown option: %s. Try 'bs --help'."
-	[err_pending]="'%s' is not wired up yet — it lands in %s."
 	[err_info_usage]="Usage: bs info <package.bs>"
-	[err_not_found]="File not found: %s"
+	[err_build_usage]="Usage: bs build <src-dir> [-o out.bs] [--gzip]"
+	[err_not_found]="File or directory not found: %s"
+
+	[build_done]="built %s"
+	[build_size]="size: %s"
 )

@@ -25,7 +25,10 @@ declare -gA BS_STR_RU=(
 	[err_unsupported_platform]="Неподдерживаемая платформа: %s"
 	[err_unknown_command]="Неизвестная команда: %s. Попробуй 'bs --help'."
 	[err_unknown_flag]="Неизвестная опция: %s. Попробуй 'bs --help'."
-	[err_pending]="«%s» ещё не подключено — появится в %s."
 	[err_info_usage]="Использование: bs info <пакет.bs>"
-	[err_not_found]="Файл не найден: %s"
+	[err_build_usage]="Использование: bs build <каталог> [-o out.bs] [--gzip]"
+	[err_not_found]="Файл или каталог не найден: %s"
+
+	[build_done]="собрано %s"
+	[build_size]="размер: %s"
 )

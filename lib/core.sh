@@ -32,7 +32,9 @@ core::detect_platform() {
 core::dispatch() {
 	local cmd=""
 	local -a rest=()
-	while (($#)); do
+	# Global flags are parsed only until the subcommand token. Everything after
+	# it belongs to the subcommand (so `bs build src -o out` reaches pack::build).
+	while (($#)) && [[ -z "$cmd" ]]; do
 		case "$1" in
 			-h|--help)    cmd=help ;;
 			-V|--version) cmd=version ;;
@@ -41,12 +43,13 @@ core::dispatch() {
 			--debug)      BS_DEBUG=true ;;
 			--lang)       shift; LANG="${1:-}"; i18n::load ;;
 			--lang=*)     LANG="${1#*=}"; i18n::load ;;
-			--)           shift; rest+=("$@"); break ;;
+			--)           shift; if (($#)); then cmd="$1"; shift; fi; break ;;
 			-*)           ui::error "$(i18n::t err_unknown_flag "$1")"; return 2 ;;
-			*)            if [[ -z "$cmd" ]]; then cmd="$1"; else rest+=("$1"); fi ;;
+			*)            cmd="$1" ;;
 		esac
 		shift
 	done
+	rest=("$@")
 
 	if [[ "${BS_DEBUG:-false}" == true ]]; then
 		core::detect_platform
@@ -56,16 +59,10 @@ core::dispatch() {
 	case "${cmd:-help}" in
 		help)    core::cmd_help ;;
 		version) core::cmd_version ;;
-		build)   core::cmd_pending build WP3 ;;   # TODO(WP3): pack::build "${rest[@]}"
+		build)   pack::build "${rest[@]}" ;;
 		info)    core::cmd_info "${rest[@]}" ;;
 		*)       ui::error "$(i18n::t err_unknown_command "$cmd")"; return 2 ;;
 	esac
-}
-
-# core::cmd_pending NAME WP
-# Friendly placeholder for commands whose implementation lands in a later WP.
-core::cmd_pending() {
-	ui::warn "$(i18n::t err_pending "$1" "$2")"
 }
 
 # core::cmd_info PKG
