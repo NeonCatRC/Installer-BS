@@ -57,7 +57,7 @@ core::dispatch() {
 		help)    core::cmd_help ;;
 		version) core::cmd_version ;;
 		build)   core::cmd_pending build WP3 ;;   # TODO(WP3): pack::build "${rest[@]}"
-		info)    core::cmd_pending info WP2 ;;     # TODO(WP2): stub-runtime --info "${rest[@]}"
+		info)    core::cmd_info "${rest[@]}" ;;
 		*)       ui::error "$(i18n::t err_unknown_command "$cmd")"; return 2 ;;
 	esac
 }
@@ -66,6 +66,15 @@ core::dispatch() {
 # Friendly placeholder for commands whose implementation lands in a later WP.
 core::cmd_pending() {
 	ui::warn "$(i18n::t err_pending "$1" "$2")"
+}
+
+# core::cmd_info PKG
+# Show a .bs package's metadata by delegating to its self-contained runtime.
+core::cmd_info() {
+	local pkg="${1:-}"
+	[[ -n "$pkg" ]] || { ui::error "$(i18n::t err_info_usage)"; return 2; }
+	[[ -f "$pkg" ]] || { ui::error "$(i18n::t err_not_found "$pkg")"; return 1; }
+	bash "$pkg" --info
 }
 
 core::cmd_version() {

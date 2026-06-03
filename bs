@@ -11,6 +11,8 @@ readonly BS_ROOT
 source "$BS_ROOT/lib/ui.sh"
 # shellcheck source=lib/i18n.sh
 source "$BS_ROOT/lib/i18n.sh"
+# shellcheck source=lib/manifest.sh
+source "$BS_ROOT/lib/manifest.sh"
 # shellcheck source=lib/core.sh
 source "$BS_ROOT/lib/core.sh"
 

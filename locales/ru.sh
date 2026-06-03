@@ -26,4 +26,6 @@ declare -gA BS_STR_RU=(
 	[err_unknown_command]="Неизвестная команда: %s. Попробуй 'bs --help'."
 	[err_unknown_flag]="Неизвестная опция: %s. Попробуй 'bs --help'."
 	[err_pending]="«%s» ещё не подключено — появится в %s."
+	[err_info_usage]="Использование: bs info <пакет.bs>"
+	[err_not_found]="Файл не найден: %s"
 )

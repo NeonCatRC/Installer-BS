@@ -26,4 +26,6 @@ declare -gA BS_STR_EN=(
 	[err_unknown_command]="Unknown command: %s. Try 'bs --help'."
 	[err_unknown_flag]="Unknown option: %s. Try 'bs --help'."
 	[err_pending]="'%s' is not wired up yet — it lands in %s."
+	[err_info_usage]="Usage: bs info <package.bs>"
+	[err_not_found]="File not found: %s"
 )
