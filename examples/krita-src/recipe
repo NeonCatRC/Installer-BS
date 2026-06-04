@@ -1,0 +1,79 @@
+# Installer-BS recipe (EXPERIMENT): package a Krita BUILT FROM SOURCE into a .bs,
+# bundling the Qt/KDE runtime via ldd plus the Qt platform plugins.
+#
+# This is deliberately the HARD path — exactly the work AppImage/linuxdeploy do.
+# It needs a build environment where Krita is already installed at /krita-pkg/usr
+# and the build-deps (Qt/KF) are present so ldd can resolve them: build the image
+# from examples/krita-src/build-env.Dockerfile (see it for the exact commands).
+# For the easy, portable route use examples/krita (AppImage) instead.
+#
+#   docker build -t krita-built:24.04 - < examples/krita-src/build-env.Dockerfile
+#   docker run --rm -v "$PWD:/work:ro" -v "$PWD/dist:/out" krita-built:24.04 \
+#       /work/bs make /work/examples/krita-src/recipe -o /out/krita-src.bs
+#
+# Verdict from the experiment: the 122 MiB .bs carries the full Qt/KF runtime and
+# all Qt platform plugins (verified on a Qt-clean system). Krita itself forces the
+# "xcb" platform, so it needs a real X display — i.e. it runs on a desktop/VM, not
+# in a headless container. Bundling libs is mechanical; shipping a GUI's display
+# stack is not, which is exactly why AppImage exists.
+
+name=krita-src
+pretty_name=Krita
+version=5.2.2
+arch=x86_64
+os=linux
+exec=bin/krita-run
+comment="Krita built from source, hand-bundled"
+categories="Graphics;2DGraphics;RasterGraphics;"
+terminal=false
+bundle_libs=false      # we bundle manually below (exec is a wrapper, not the ELF)
+
+prepare() {
+	local src=/krita-pkg/usr
+	[[ -d "$src" ]] || { ui::error "no /krita-pkg — build Krita first (dist/krita-build.Dockerfile)"; return 1; }
+
+	# 1. The installed tree (binary, krita's own libs + kritaplugins, share/).
+	cp -a "$src" "$pkgdir/usr"
+	mkdir -p "$pkgdir/lib" "$pkgdir/plugins" "$pkgdir/bin"
+
+	# 2. Qt platform plugins are dlopen'd (ldd won't see them) — copy them in.
+	local qtplug
+	qtplug="$(find /usr/lib -maxdepth 5 -type d -name platforms -path '*plugins*' 2>/dev/null | head -1)"
+	if [[ -n "$qtplug" ]]; then
+		local base; base="$(dirname "$qtplug")"
+		local d
+		for d in platforms imageformats iconengines styles; do
+			[[ -d "$base/$d" ]] && cp -a "$base/$d" "$pkgdir/plugins/"
+		done
+		ui::info "copied Qt plugins from $base"
+	else
+		ui::warn "Qt plugin dir not found — GUI will not start"
+	fi
+
+	# 3. Bundle the shared-library closure (ldd over the binary + every bundled
+	#    plugin), excluding only the glibc core/loader — everything else travels.
+	ui::info "resolving library closure via ldd..."
+	local elf base path n=0
+	while IFS= read -r elf; do
+		while read -r base path; do
+			case "$base" in
+				ld-linux*|libc.so*|libm.so*|libpthread.so*|libdl.so*|librt.so*|libresolv.so*|linux-vdso*) continue ;;
+			esac
+			[[ -f "$path" && ! -e "$pkgdir/lib/$base" ]] || continue
+			cp -L "$path" "$pkgdir/lib/$base" && n=$((n + 1))
+		done < <(ldd "$elf" 2>/dev/null | awk '/=>/ && $3 ~ /^\// {print $1, $3}')
+	done < <(find "$pkgdir/usr/bin/krita" "$pkgdir/plugins" "$pkgdir/usr/lib" -type f \( -name 'krita' -o -name '*.so*' \) 2>/dev/null)
+	ui::info "bundled $n shared libraries"
+
+	# 4. Wrapper: point the loader and Qt at the bundled copies, then exec krita.
+	cat > "$pkgdir/bin/krita-run" <<'WRAP'
+#!/usr/bin/env bash
+here="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+root="$(dirname "$here")"
+export LD_LIBRARY_PATH="$root/lib:$root/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+export QT_PLUGIN_PATH="$root/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$root/plugins/platforms"
+exec "$root/usr/bin/krita" "$@"
+WRAP
+	chmod +x "$pkgdir/bin/krita-run"
+}

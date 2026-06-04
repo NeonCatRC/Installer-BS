@@ -1,0 +1,20 @@
+Installer-BS
+============
+
+A parody-but-functional fork of "Installer-SH" by Андрей Цымбалов (Chimbal):
+https://github.com/Shedou/Installer-SH
+
+Installer-BS keeps the sensible core idea of the original — root-less portable
+software, config isolation, menu integration — and reimplements it cleanly as
+modular, dependency-free Bash. Its user-facing texts satirise the archaisms and
+the marketing of the original; the code does not.
+
+The original scripts are preserved for reference in docs/legacy/. A guided tour
+of what changed and why lives in docs/MUSEUM.md, with the full technical catalog
+in docs/dev/ANTIPATTERNS.md.
+
+The original work is MIT-licensed and that copyright is retained in LICENSE.
+The satire targets engineering decisions and public claims, not the person.
+
+"BS" expands to BullShit (the honest one), Bash Script (the technical one), or
+Bundled Software (the one for release notes). All three are correct.

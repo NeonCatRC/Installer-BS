@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Installer-BS — command-line entry point.
+# Thin dispatcher: resolve our own location, load the lib modules, hand off to core.
+set -euo pipefail
+
+# Real directory of this script, following symlinks.
+BS_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+readonly BS_ROOT
+
+# shellcheck source=lib/ui.sh
+source "$BS_ROOT/lib/ui.sh"
+# shellcheck source=lib/i18n.sh
+source "$BS_ROOT/lib/i18n.sh"
+# shellcheck source=lib/manifest.sh
+source "$BS_ROOT/lib/manifest.sh"
+# shellcheck source=lib/bundle.sh
+source "$BS_ROOT/lib/bundle.sh"
+# shellcheck source=lib/pack.sh
+source "$BS_ROOT/lib/pack.sh"
+# shellcheck source=lib/sign.sh
+source "$BS_ROOT/lib/sign.sh"
+# shellcheck source=lib/recipe.sh
+source "$BS_ROOT/lib/recipe.sh"
+# shellcheck source=lib/core.sh
+source "$BS_ROOT/lib/core.sh"
+
+i18n::load
+core::dispatch "$@"

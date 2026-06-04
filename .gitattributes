@@ -1,0 +1,16 @@
+# This is a Linux shell project developed partly on Windows.
+# CRLF breaks shebangs and bash execution, so force LF on everything textual.
+* text=auto eol=lf
+
+# Extensionless executables must stay LF.
+bs                       text eol=lf
+template/stub.sh         text eol=lf
+examples/hello/bin/hello text eol=lf
+
+# Shell sources.
+*.sh text eol=lf
+
+# Binary assets (none committed yet — be explicit if added later).
+*.png binary
+*.jpg binary
+*.kra binary

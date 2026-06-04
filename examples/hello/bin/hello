@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The entire "application" for the example package. Source, not a committed binary.
+echo "Hello from a real Installer-BS package."
+echo "I am not curing dependency hell. I am a folder that politely says hi."

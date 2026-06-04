@@ -1,0 +1,36 @@
+# Installer-BS recipe: a compiled executable that depends on a CUSTOM shared
+# library, bundled via ldd. This is the real "binary + its .so dependencies"
+# path — harder (and more honest) than repackaging a self-contained AppImage.
+# Needs a C compiler (cc/gcc). Run on Linux:   ./bs make examples/greeter/recipe
+#
+# The point: after the build the library exists ONLY inside the .bs. If bundling
+# works, the package runs anywhere; if it didn't, you'd get "libgreet.so: cannot
+# open shared object file".
+
+name=greeter
+pretty_name=Greeter
+version=1.0.0
+arch=x86_64
+os=linux
+exec=bin/greeter
+comment="Demo: a compiled app with a bundled shared library"
+categories="Utility;"
+terminal=true
+bundle_libs=true     # bs build copies libgreet.so via ldd into the package
+
+prepare() {
+	local cc; cc="$(command -v cc || command -v gcc || true)"
+	[[ -n "$cc" ]] || { ui::error "need a C compiler (cc/gcc)"; return 1; }
+
+	local libdir="$srcdir/libs"
+	mkdir -p "$libdir" "$pkgdir/bin"
+
+	# Build the custom shared library...
+	"$cc" -shared -fPIC -o "$libdir/libgreet.so" "$RECIPE_DIR/src/greet.c" || return 1
+
+	# ...and the executable that links it. The rpath lets `ldd` resolve the lib
+	# at build time; on the target that path is gone, so the runtime's
+	# LD_LIBRARY_PATH (pointing at the bundled copy) takes over.
+	"$cc" -O2 -o "$pkgdir/bin/greeter" "$RECIPE_DIR/src/main.c" \
+		-I"$RECIPE_DIR/src" -L"$libdir" -lgreet -Wl,-rpath,"$libdir" || return 1
+}
