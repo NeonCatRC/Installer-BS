@@ -1,18 +1,18 @@
 # shellcheck shell=bash
-# Platform abstraction for Linux. ALL OS-specific behavior (sed -i form, stat
-# format, base install paths) lives behind this thin interface so the rest of
-# the code stays platform-agnostic. A future lib/platform/freebsd.sh can be
-# added without scattering `if FreeBSD` branches through every function.
-# TODO(WP1/WP2): implement the helpers as they are needed.
+# Platform interface — Linux reference implementation.
+#
+# Groundwork, NOT dead code. This is the single seam where OS-specific behavior
+# would live (the `sed -i` form, the `stat` format, base paths), so the rest of
+# the codebase never sprouts `if FreeBSD` branches the way the original did.
+#
+# It is intentionally not sourced yet: the current Linux-only code has nothing
+# that diverges by platform. When a second platform is added, copy this file to
+# lib/platform/<os>.sh, adjust the bodies, and source the right one from `bs`
+# after detection. The bodies below are real (GNU coreutils) so this doubles as
+# the reference any port starts from.
 
-# platform::sed_inplace EXPR FILE
-platform::sed_inplace() {
-	# Linux GNU sed form. TODO(WP2): implement (sed -i "$1" "$2").
-	:
-}
+# platform::sed_inplace EXPR FILE  — edit FILE in place.
+platform::sed_inplace() { sed -i -e "$1" -- "$2"; }
 
-# platform::file_mode FILE  -> prints octal permission bits
-platform::file_mode() {
-	# TODO(WP2): stat -c '%a' "$1"
-	:
-}
+# platform::file_mode FILE  — print octal permission bits (e.g. 755).
+platform::file_mode() { stat -c '%a' -- "$1"; }

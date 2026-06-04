@@ -23,7 +23,6 @@ declare -gA BS_STR_RU=(
 
 	[version_quip]="Папка /portsoft в корне твоей ФС не создана. Не благодари."
 
-	[err_unsupported_platform]="Неподдерживаемая платформа: %s"
 	[err_unknown_command]="Неизвестная команда: %s. Попробуй 'bs --help'."
 	[err_unknown_flag]="Неизвестная опция: %s. Попробуй 'bs --help'."
 	[err_info_usage]="Использование: bs info <пакет.bs>"
@@ -32,6 +31,8 @@ declare -gA BS_STR_RU=(
 
 	[build_done]="собрано %s"
 	[build_size]="размер: %s"
+	[build_overwrite]="Перезаписать %s?"
+	[build_cancelled]="сборка отменена"
 
 	[help_make]="Собрать пакет из рецепта (скачать, проверить, упаковать)."
 	[help_sign]="Подписать пакет через OpenPGP (gpg)."

@@ -49,7 +49,9 @@ pack::build() {
 	[[ -n "$out" ]] || out="$name-$version-$arch.bs"
 	local outdir; outdir="$(dirname -- "$out")"
 	[[ -d "$outdir" ]] || { ui::error "output directory does not exist: $outdir"; return 1; }
-	[[ -e "$out" ]] && ui::warn "overwriting $out"
+	if [[ -e "$out" ]]; then
+		ui::confirm "$(i18n::t build_overwrite "$out")" || { ui::info "$(i18n::t build_cancelled)"; return 1; }
+	fi
 
 	local stage payload
 	stage="$(mktemp -d)"; payload="$(mktemp)"

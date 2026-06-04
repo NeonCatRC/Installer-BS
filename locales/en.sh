@@ -23,7 +23,6 @@ declare -gA BS_STR_EN=(
 
 	[version_quip]="No /portsoft was created in your filesystem root. You're welcome."
 
-	[err_unsupported_platform]="Unsupported platform: %s"
 	[err_unknown_command]="Unknown command: %s. Try 'bs --help'."
 	[err_unknown_flag]="Unknown option: %s. Try 'bs --help'."
 	[err_info_usage]="Usage: bs info <package.bs>"
@@ -32,6 +31,8 @@ declare -gA BS_STR_EN=(
 
 	[build_done]="built %s"
 	[build_size]="size: %s"
+	[build_overwrite]="Overwrite %s?"
+	[build_cancelled]="build cancelled"
 
 	[help_make]="Build a package from a recipe (fetch upstream, verify, pack)."
 	[help_sign]="Sign a package with OpenPGP (gpg)."
