@@ -128,6 +128,11 @@ recipe::_build() {
 	local source_url="" source_sha256="" source_type=""
 	local srcdir="$work/src" pkgdir="$work/pkg"
 	mkdir -p "$srcdir" "$pkgdir"
+	# Directory of the recipe, so a recipe can reference its own sources.
+	# Exported so the sourced recipe (and any tool it runs) can read it.
+	local RECIPE_DIR
+	RECIPE_DIR="$(cd -- "$(dirname -- "$recipe")" && pwd)"
+	export RECIPE_DIR
 
 	# A recipe is the packager's own trusted build script (cf. PKGBUILD/formula).
 	# shellcheck disable=SC1090

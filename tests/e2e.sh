@@ -111,6 +111,19 @@ if contains "$rout" "recipe app ok"; then ok "recipe package runs"; else no "rec
 sed 's/^source_sha256=.*/source_sha256=deadbeef/' "$WORK/recipe" > "$WORK/recipe_bad"
 if bsrun make "$WORK/recipe_bad" -o "$WORK/bad.bs" >/dev/null 2>&1; then no "recipe rejects bad sha256"; else ok "recipe rejects bad sha256"; fi
 
+printf '== bundling (compiled binary + custom .so) ==\n'
+if [[ "$(uname -s)" == Linux ]] && { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; }; then
+	if bsrun make "$ROOT/examples/greeter/recipe" -o "$WORK/greeter.bs" >/dev/null 2>&1; then ok "greeter recipe builds (ldd bundling)"; else no "greeter recipe builds (ldd bundling)"; fi
+	# The custom library now exists ONLY inside the package; running it proves the
+	# bundle is found via the runtime's LD_LIBRARY_PATH.
+	gout="$(bash "$WORK/greeter.bs" 2>/dev/null)"
+	if contains "$gout" "greetings from a bundled shared library"; then ok "bundled .so resolved at runtime"; else no "bundled .so resolved at runtime"; fi
+	bash "$WORK/greeter.bs" --extract "$WORK/gx" >/dev/null 2>&1
+	want_file "$WORK/gx/lib/libgreet.so" "package carries the bundled libgreet.so"
+else
+	printf '  skip: no C compiler\n'
+fi
+
 printf '== sign / verify ==\n'
 if command -v gpg >/dev/null 2>&1; then
 	export GNUPGHOME="$WORK/gnupg"; mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
