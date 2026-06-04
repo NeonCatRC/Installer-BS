@@ -31,16 +31,25 @@ _bs_payload_start() {
 # This tar does not autodetect compression from a pipe, so we pick the
 # decompressor from the payload's magic bytes (xz: fd377a585a00, gzip: 1f8b).
 _bs_decomp() { case "$1" in 1f8b*) gzip -dc ;; *) xz -dc ;; esac; }
+# Fail early with a clear, actionable message if the needed decompressor is absent
+# (otherwise extraction silently yields nothing -> a confusing "no manifest").
+_bs_check_decomp() {
+	local tool; case "$1" in 1f8b*) tool=gzip ;; *) tool=xz ;; esac
+	command -v "$tool" >/dev/null 2>&1 || _bs_die "this package needs '$tool' to unpack, and it isn't installed" \
+		"install it (xz-utils / gzip), or rebuild the package with: bs build --gzip"
+}
 _bs_magic() {
 	local s; s="$(_bs_payload_start)"
 	( set +o pipefail; tail -n +"$s" "$BS_SELF" | head -c6 | od -An -tx1 | tr -d ' \n' )
 }
 _bs_extract_all() {
 	local s m; s="$(_bs_payload_start)"; m="$(_bs_magic)"
+	_bs_check_decomp "$m"
 	tail -n +"$s" "$BS_SELF" | _bs_decomp "$m" | tar -x -C "$1"
 }
 _bs_read_member() {
 	local s m; s="$(_bs_payload_start)"; m="$(_bs_magic)"
+	_bs_check_decomp "$m"
 	tail -n +"$s" "$BS_SELF" | _bs_decomp "$m" | tar -xO "$1" 2>/dev/null || true
 }
 
@@ -48,6 +57,7 @@ _bs_read_member() {
 declare -A MF=()
 _bs_trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 _bs_load_manifest() {
+	_bs_check_decomp "$(_bs_magic)"   # clear error in the main shell before reading via a subshell
 	local line key val got=0
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		line="${line%$'\r'}"

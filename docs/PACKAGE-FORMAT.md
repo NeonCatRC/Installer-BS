@@ -25,10 +25,15 @@ __BS_PAYLOAD__                        # marker: the ONLY whole line equal to thi
 ### Compression
 
 The payload is a tar compressed with **xz** (default) or **gzip** (fallback when
-`xz` is absent at build time). The runtime does not rely on tar autodetecting
-compression from a pipe (not portable); it reads the payload's magic bytes
-(`fd 37 7a 58 5a 00` = xz, `1f 8b` = gzip) and decompresses explicitly, then pipes
-to plain `tar`.
+`xz` is absent at build time, or forced with `bs build --gzip`). The runtime does
+not rely on tar autodetecting compression from a pipe (not portable); it reads the
+payload's magic bytes (`fd 37 7a 58 5a 00` = xz, `1f 8b` = gzip) and decompresses
+explicitly, then pipes to plain `tar`.
+
+The chosen decompressor must exist on the target. `xz` is a base package on every
+mainstream desktop/server Linux; only ultra-minimal images omit it — for those,
+build with `--gzip` (universal, at the cost of a larger file). If the needed tool
+is missing, the runtime says so explicitly instead of failing obscurely.
 
 ### Payload contents
 
