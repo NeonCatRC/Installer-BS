@@ -32,4 +32,19 @@ declare -gA BS_STR_RU=(
 
 	[build_done]="собрано %s"
 	[build_size]="размер: %s"
+
+	[help_make]="Собрать пакет из рецепта (скачать, проверить, упаковать)."
+	[help_sign]="Подписать пакет через OpenPGP (gpg)."
+	[help_verify]="Проверить подпись и контрольную сумму пакета."
+	[err_make_usage]="Использование: bs make <рецепт> [-o out.bs]"
+	[err_sign_usage]="Использование: bs sign <пакет.bs> [-k KEYID]"
+	[err_verify_usage]="Использование: bs verify <пакет.bs>"
+	[err_no_gpg]="gpg не найден (установи GnuPG для подписи/проверки)"
+	[sign_done]="подписано -> %s"
+	[sign_fail]="подпись не удалась"
+	[verify_sha_ok]="контрольная сумма ок (sha256)"
+	[verify_sha_bad]="КОНТРОЛЬНАЯ СУММА НЕ СОВПАЛА (sha256)"
+	[verify_sig_ok]="подпись верна (OpenPGP)"
+	[verify_sig_bad]="ПОДПИСЬ НЕВЕРНА (OpenPGP)"
+	[verify_nothing]="нечего проверять (рядом нет .sig или .sha256)"
 )

@@ -3,7 +3,7 @@
 # the subcommand dispatcher. No logic is duplicated across modules.
 
 BS_NAME="installer-bs"
-BS_VERSION="0.1.0"
+BS_VERSION="0.2.0"
 readonly BS_NAME BS_VERSION
 
 # core::detect_platform
@@ -61,6 +61,9 @@ core::dispatch() {
 		help)    core::cmd_help ;;
 		version) core::cmd_version ;;
 		build)   pack::build "${rest[@]}" ;;
+		make)    recipe::run "${rest[@]}" ;;
+		sign)    sign::sign "${rest[@]}" ;;
+		verify)  sign::verify "${rest[@]}" ;;
 		info)    core::cmd_info "${rest[@]}" ;;
 		*)       ui::error "$(i18n::t err_unknown_command "$cmd")"; return 2 ;;
 	esac
@@ -89,6 +92,9 @@ $(i18n::t help_usage)
 
 $(i18n::t help_commands)
   build    $(i18n::t help_build)
+  make     $(i18n::t help_make)
+  sign     $(i18n::t help_sign)
+  verify   $(i18n::t help_verify)
   info     $(i18n::t help_info)
   version  $(i18n::t help_version)
   help     $(i18n::t help_help)

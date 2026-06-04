@@ -1,0 +1,41 @@
+# Installer-BS recipe: repackage the official Krita AppImage into a .bs.
+# Run on a Linux x86_64 host:   ./bs make examples/krita/recipe
+#
+# We do NOT compile Krita — its build difficulty is the original author's whole
+# saga ("monopoly on compilation", "impossible to build like a human"). We take
+# KDE's official portable build, verify it against KDE's OWN published sha256
+# (the integrity check the original claimed AppImage "doesn't have"), and
+# repackage it in one command — no third-party 7-Zip blob, system xz only.
+# Sign the result with:   ./bs sign krita-5.2.6-x86_64.bs
+
+name=krita
+pretty_name=Krita
+version=5.2.6
+arch=x86_64
+os=linux
+exec=AppRun
+comment=Digital painting application
+categories=Graphics;2DGraphics;RasterGraphics;
+terminal=false
+bundle_libs=false   # the AppImage already carries its own libraries
+
+prepare() {
+	local base="https://download.kde.org/stable/krita/${version}/krita-${version}-x86_64.appimage"
+	local img="$srcdir/krita.appimage"
+
+	bs_fetch "$base" "$img" || return 1
+
+	# Real integrity: verify the download against KDE's published checksum.
+	if bs_fetch "$base.sha256" "$srcdir/krita.sha256"; then
+		local want got
+		want="$(cut -d' ' -f1 < "$srcdir/krita.sha256")"
+		got="$(sha256sum "$img" | cut -d' ' -f1)"
+		if [[ "$want" != "$got" ]]; then
+			ui::error "Krita AppImage failed KDE's published sha256"
+			return 1
+		fi
+		ui::ok "verified against KDE's published sha256"
+	fi
+
+	bs_appimage_extract "$img" "$pkgdir" || return 1
+}

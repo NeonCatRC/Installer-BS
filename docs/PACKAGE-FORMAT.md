@@ -138,11 +138,15 @@ the app dir.
 
 ---
 
-## 4. Integrity
+## 4. Integrity and authenticity
 
-An optional `<file>.bs.sha256` may sit next to the package (`sha256sum`). It
-detects a corrupted/partial copy — it is **not** a security signature, and the
-docs say so plainly. MD5 is not used anywhere.
+Two independent, optional sidecars — both honestly labeled:
+
+- `<file>.bs.sha256` (`sha256sum`): detects a corrupted/partial copy. **Not** a
+  security signature. Written automatically by `bs build`. MD5 is not used anywhere.
+- `<file>.bs.sig` (OpenPGP detached, armored): real authenticity. Created by
+  `bs sign <pkg> [-k KEYID]` and checked by `bs verify <pkg>` via `gpg`. The
+  checksum proves the bytes are intact; the signature proves **who** built them.
 
 ## 5. Compatibility (library bundling)
 
@@ -152,3 +156,25 @@ dependent `.so` files into `lib/`, excluding the base loader/libc set
 optional), as linuxdeploy/AppImage do. The runtime prepends `lib/` to
 `LD_LIBRARY_PATH`. No sandbox, no qemu in format 1; a foreign architecture fails
 with a clear message rather than emulating.
+
+## 6. Recipes (`bs make`)
+
+A recipe builds a package from an upstream artifact instead of a pre-laid-out
+directory. It is a small bash file authored by the packager — trusted, like a
+PKGBUILD or a Homebrew formula — sourced in a scoped way by `bs make <recipe>`.
+
+A recipe sets the manifest fields (`name`, `version`, `arch`, `os`, `exec`, and
+the optional ones) and obtains the files in one of two ways:
+
+- declare `source_url` + `source_type` (`appimage` | `tar` | `file`) and,
+  ideally, `source_sha256` — the default flow fetches, verifies and lays out the
+  payload; or
+- define a `prepare()` function that populates `$pkgdir`, using helpers:
+  - `bs_fetch URL DEST [SHA256]` — download (or copy a local path / `file://`),
+    verifying the checksum when given;
+  - `bs_appimage_extract FILE DESTDIR` — extract an AppImage's tree (Linux host
+    of the matching architecture).
+
+`bs make` then writes the manifest from the recipe fields and hands the staged
+directory to `bs build`. Example: [`examples/krita/recipe`](../examples/krita/recipe)
+repackages the official Krita AppImage, verified against KDE's published sha256.

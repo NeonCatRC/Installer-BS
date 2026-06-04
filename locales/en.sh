@@ -32,4 +32,19 @@ declare -gA BS_STR_EN=(
 
 	[build_done]="built %s"
 	[build_size]="size: %s"
+
+	[help_make]="Build a package from a recipe (fetch upstream, verify, pack)."
+	[help_sign]="Sign a package with OpenPGP (gpg)."
+	[help_verify]="Verify a package's signature and checksum."
+	[err_make_usage]="Usage: bs make <recipe> [-o out.bs]"
+	[err_sign_usage]="Usage: bs sign <package.bs> [-k KEYID]"
+	[err_verify_usage]="Usage: bs verify <package.bs>"
+	[err_no_gpg]="gpg not found (install GnuPG to sign/verify)"
+	[sign_done]="signed -> %s"
+	[sign_fail]="signing failed"
+	[verify_sha_ok]="checksum ok (sha256)"
+	[verify_sha_bad]="CHECKSUM MISMATCH (sha256)"
+	[verify_sig_ok]="signature ok (OpenPGP)"
+	[verify_sig_bad]="BAD SIGNATURE (OpenPGP)"
+	[verify_nothing]="nothing to verify (no .sig or .sha256 beside the package)"
 )

@@ -17,6 +17,10 @@ source "$BS_ROOT/lib/manifest.sh"
 source "$BS_ROOT/lib/bundle.sh"
 # shellcheck source=lib/pack.sh
 source "$BS_ROOT/lib/pack.sh"
+# shellcheck source=lib/sign.sh
+source "$BS_ROOT/lib/sign.sh"
+# shellcheck source=lib/recipe.sh
+source "$BS_ROOT/lib/recipe.sh"
 # shellcheck source=lib/core.sh
 source "$BS_ROOT/lib/core.sh"
 

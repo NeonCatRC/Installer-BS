@@ -88,5 +88,53 @@ bsrun build "$evil" -o "$WORK/evil.bs" >/dev/null 2>&1
 bash "$WORK/evil.bs" --info >/dev/null 2>&1
 want_gone "$WORK/PWNED" "manifest value is data, not executed"
 
+printf '== recipe build (tar) ==\n'
+app="$WORK/app"; mkdir -p "$app/bin"
+printf '#!/usr/bin/env bash\necho recipe app ok\n' > "$app/bin/demo"; chmod +x "$app/bin/demo"
+( cd "$app" && tar -czf "$WORK/demo.tgz" -- * )
+sum="$(sha256sum "$WORK/demo.tgz" | cut -d' ' -f1)"
+cat > "$WORK/recipe" <<RECIPE
+name=demo
+version=2.0
+arch=x86_64
+os=linux
+exec=bin/demo
+source_type=tar
+source_url=$WORK/demo.tgz
+source_sha256=$sum
+RECIPE
+if bsrun make "$WORK/recipe" -o "$WORK/demo.bs" >/dev/null 2>&1; then ok "recipe build (tar) exits 0"; else no "recipe build (tar) exits 0"; fi
+want_file "$WORK/demo.bs" "recipe produced package"
+rout="$(bash "$WORK/demo.bs" 2>/dev/null)"
+if contains "$rout" "recipe app ok"; then ok "recipe package runs"; else no "recipe package runs"; fi
+# A wrong checksum must abort the build.
+sed 's/^source_sha256=.*/source_sha256=deadbeef/' "$WORK/recipe" > "$WORK/recipe_bad"
+if bsrun make "$WORK/recipe_bad" -o "$WORK/bad.bs" >/dev/null 2>&1; then no "recipe rejects bad sha256"; else ok "recipe rejects bad sha256"; fi
+
+printf '== sign / verify ==\n'
+if command -v gpg >/dev/null 2>&1; then
+	export GNUPGHOME="$WORK/gnupg"; mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
+	cat > "$WORK/keyparams" <<'KEY'
+%no-protection
+Key-Type: eddsa
+Key-Curve: ed25519
+Name-Real: BS Test
+Name-Email: test@bs.local
+Expire-Date: 0
+%commit
+KEY
+	if gpg --batch --gen-key "$WORK/keyparams" >/dev/null 2>&1; then
+		if bsrun sign "$out" >/dev/null 2>&1; then ok "sign creates a signature"; else no "sign creates a signature"; fi
+		want_file "$out.sig" "signature file produced"
+		if bsrun verify "$out" >/dev/null 2>&1; then ok "verify accepts a good signature"; else no "verify accepts a good signature"; fi
+		cp "$out" "$WORK/tampered.bs"; printf 'x' >> "$WORK/tampered.bs"; cp "$out.sig" "$WORK/tampered.bs.sig"
+		if bsrun verify "$WORK/tampered.bs" >/dev/null 2>&1; then no "verify rejects a tampered package"; else ok "verify rejects a tampered package"; fi
+	else
+		printf '  skip: gpg key generation failed\n'
+	fi
+else
+	printf '  skip: gpg not installed\n'
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]
