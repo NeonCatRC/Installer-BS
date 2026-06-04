@@ -94,8 +94,9 @@ cd Installer-BS
 #   ::   size: 9 KiB
 ```
 
-На выходе — `hello-1.0.0-x86_64.bs` и `.sha256` рядом. Полная спецификация манифеста и формата —
-в [`docs/PACKAGE-FORMAT.md`](docs/PACKAGE-FORMAT.md).
+На выходе — `hello-1.0.0-x86_64.bs` и `.sha256` рядом. Сборка своими руками от А до Я (все три
+пути, подпись, тест, траблшутинг) — в [`docs/PACKAGING-GUIDE.md`](docs/PACKAGING-GUIDE.md);
+формальная спецификация формата — в [`docs/PACKAGE-FORMAT.md`](docs/PACKAGE-FORMAT.md).
 
 ## Запусти пакет
 
