@@ -15,7 +15,7 @@ arch=x86_64
 os=linux
 exec=AppRun
 comment="Digital painting application"
-categories=Graphics;2DGraphics;RasterGraphics;
+categories="Graphics;2DGraphics;RasterGraphics;"
 terminal=false
 bundle_libs=false   # the AppImage already carries its own libraries
 

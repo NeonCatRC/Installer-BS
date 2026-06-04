@@ -14,7 +14,7 @@ arch=x86_64
 os=linux
 exec=bin/greeter
 comment="Demo: a compiled app with a bundled shared library"
-categories=Utility;
+categories="Utility;"
 terminal=true
 bundle_libs=true     # bs build copies libgreet.so via ldd into the package
 
