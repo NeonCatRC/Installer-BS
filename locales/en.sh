@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # English locale — base/fallback. Strings are data, referenced via i18n::t.
 # Values may contain printf format specifiers (e.g. %s).
 # shellcheck disable=SC2034  # consumed by i18n::load via indirect expansion.

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Platform abstraction for Linux. ALL OS-specific behavior (sed -i form, stat
 # format, base install paths) lives behind this thin interface so the rest of
 # the code stays platform-agnostic. A future lib/platform/freebsd.sh can be

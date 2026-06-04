@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Core: single source of truth for platform detection, global flag parsing and
 # the subcommand dispatcher. No logic is duplicated across modules.
 

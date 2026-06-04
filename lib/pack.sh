@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Pack: `bs build <src-dir>` turns a prepared directory + manifest into one
 # self-extracting .bs file (template/stub.sh + tar payload). It never mutates the
 # source, cleans its temps via trap, and writes an optional sha256 sidecar.

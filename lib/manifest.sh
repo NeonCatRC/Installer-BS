@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Manifest: parse the declarative package manifest as DATA — never source/eval it.
 # Used by the builder (bs build). The runtime stub carries its own tiny copy so a
 # package stays self-contained. Format reference: docs/PACKAGE-FORMAT.md.

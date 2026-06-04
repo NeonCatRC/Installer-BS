@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # UI helpers: consistent, pipe-friendly output.
 # Colors auto-disable when stdout is not a TTY or when NO_COLOR is set.
 # Color/confirm state is owned here so the rest of the code never juggles globals.

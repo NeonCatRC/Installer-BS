@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # i18n: load locales/<lang>.sh based on $LANG, with English as the fallback base.
 # Strings are data in associative arrays, never sourced-as-logic. Lookup by key
 # means code holds no user-facing literals.

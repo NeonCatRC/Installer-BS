@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Bundle: collect an executable's non-system shared libraries (AppImage-style),
 # so a package can run on hosts that lack them. The base loader/libc set is
 # excluded, as linuxdeploy/AppImage do.

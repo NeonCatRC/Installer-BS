@@ -51,7 +51,7 @@ if contains "$info_out" "hello 1.0.0"; then ok "bs info shows name/version"; els
 printf '== portable run ==\n'
 run_out="$(bash "$out" 2>/dev/null)"
 if contains "$run_out" "Hello from a real"; then ok "portable run prints app output"; else no "portable run prints app output"; fi
-bash "$out" >/dev/null 2>&1 && ok "second run (cache) exits 0" || no "second run (cache) exits 0"
+if bash "$out" >/dev/null 2>&1; then ok "second run (cache) exits 0"; else no "second run (cache) exits 0"; fi
 want_file "$XDG_CACHE_HOME/installer-bs/hello-1.0.0/.bs-ok" "run cache populated once"
 
 printf '== extract ==\n'
@@ -82,6 +82,7 @@ printf '== injection regression ==\n'
 evil="$WORK/evil"; mkdir -p "$evil/bin"
 printf '#!/usr/bin/env bash\necho hi\n' > "$evil/bin/x"; chmod +x "$evil/bin/x"
 # A malicious comment value: must be stored/printed as data, never executed.
+# shellcheck disable=SC2016  # the $(...) must stay literal in the manifest
 printf 'name = evil\nversion = 1\narch = x86_64\nos = linux\nexec = bin/x\ncomment = $(touch %s/PWNED)\n' "$WORK" > "$evil/manifest"
 bsrun build "$evil" -o "$WORK/evil.bs" >/dev/null 2>&1
 bash "$WORK/evil.bs" --info >/dev/null 2>&1
