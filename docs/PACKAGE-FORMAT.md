@@ -163,6 +163,10 @@ A recipe builds a package from an upstream artifact instead of a pre-laid-out
 directory. It is a small bash file authored by the packager — trusted, like a
 PKGBUILD or a Homebrew formula — sourced in a scoped way by `bs make <recipe>`.
 
+Because the recipe is sourced as bash, quote any value containing spaces
+(`comment="A nice app"`). It can read `$RECIPE_DIR` (its own directory) to find
+bundled sources.
+
 A recipe sets the manifest fields (`name`, `version`, `arch`, `os`, `exec`, and
 the optional ones) and obtains the files in one of two ways:
 
