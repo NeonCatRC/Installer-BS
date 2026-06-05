@@ -162,6 +162,13 @@ optional), as linuxdeploy/AppImage do. The runtime prepends `lib/` to
 `LD_LIBRARY_PATH`. No sandbox, no qemu in format 1; a foreign architecture fails
 with a clear message rather than emulating.
 
+**glibc is never bundled** — only excluded, as above. glibc is a matched set with its dynamic
+loader `ld-linux.so` and is forward-compatible only: a package built against glibc X runs on hosts
+with glibc ≥ X, never older. The right fix for reach is to build on the **oldest** glibc you intend
+to support (as AppImage/manylinux do on ancient base images), not to bundle glibc — which would also
+drag in its loader, `gconv` modules and `dlopen`'d NSS plugins. Symptom of too-new a build host:
+`version 'GLIBC_2.x' not found` on an older target.
+
 ## 6. Recipes (`bs make`)
 
 A recipe builds a package from an upstream artifact instead of a pre-laid-out
