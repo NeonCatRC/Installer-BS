@@ -13,7 +13,7 @@ pretty_name="Krita (4.2.9)"
 version=4.2.9
 arch=x86_64
 os=linux
-exec=AppRun
+exec=bs-run
 comment="Krita 4.2.9 — old AppImage repacked for ancient distros"
 categories="Graphics;2DGraphics;RasterGraphics;"
 terminal=false
@@ -35,4 +35,18 @@ prepare() {
 	fi
 
 	bs_appimage_extract "$img" "$pkgdir" || return 1
+	[[ -e "$pkgdir/AppRun" ]] || { ui::error "extracted AppImage has no AppRun"; return 1; }
+
+	# Run extracted (no FUSE): export APPDIR and, for the bundled Python, PYTHONHOME
+	# — otherwise Krita fails with "No module named 'encodings'". See examples/appimage.
+	cat > "$pkgdir/bs-run" <<'WRAP'
+#!/usr/bin/env bash
+root="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+export APPDIR="$root"
+if compgen -G "$root/usr/lib/python3.*" >/dev/null 2>&1; then
+	export PYTHONHOME="$root/usr"
+fi
+exec "$root/AppRun" "$@"
+WRAP
+	chmod +x "$pkgdir/bs-run"
 }

@@ -87,6 +87,7 @@ Parsing rules:
 | `terminal`     | `false`   | `Terminal=` in the `.desktop`                      |
 | `bundle_libs`  | `false`   | builder collects non-system `.so` via `ldd`        |
 | `isolate_home` | `false`   | runtime redirects `HOME`/`XDG_*` into the app dir  |
+| `min_glibc`    | —         | minimum host glibc (e.g. `2.31`); auto-detected by `bs build` |
 | `maintainer`   | —         | who built the package                              |
 | `homepage`     | —         | project URL                                        |
 
@@ -168,6 +169,13 @@ with glibc ≥ X, never older. The right fix for reach is to build on the **olde
 to support (as AppImage/manylinux do on ancient base images), not to bundle glibc — which would also
 drag in its loader, `gconv` modules and `dlopen`'d NSS plugins. Symptom of too-new a build host:
 `version 'GLIBC_2.x' not found` on an older target.
+
+To make that failure legible, `bs build` records the minimum glibc as the optional
+`min_glibc` manifest field — the highest `GLIBC_x.y` symbol across the payload's
+ELF binaries (via `objdump`/`readelf`). At run/install time the package compares
+it to the host and, if the host is older, prints a clear message (and a GUI
+dialog via `zenity`/`kdialog`/`xmessage` when a display is present) instead of the
+cryptic loader error. Bypass with `BS_NO_GLIBC_CHECK=1`.
 
 ## 6. Recipes (`bs make`)
 

@@ -14,6 +14,24 @@ pack::_human() {
 	fi
 }
 
+# Print the highest GLIBC_x.y symbol version required across a tree's ELF binaries
+# (= the minimum glibc to run it). Needs objdump or readelf; empty if neither is
+# present or nothing links glibc.
+pack::_detect_glibc() {
+	local dir="$1" f v max=""
+	local -a dump
+	if   command -v objdump >/dev/null 2>&1; then dump=(objdump -T)
+	elif command -v readelf >/dev/null 2>&1; then dump=(readelf -W --dyn-syms)
+	else return 0; fi
+	while IFS= read -r f; do
+		[[ "$(head -c4 "$f" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || continue
+		v="$("${dump[@]}" "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -V | tail -1)"
+		[[ -n "$v" ]] || continue
+		if [[ -z "$max" ]]; then max="$v"; else max="$(printf '%s\n%s\n' "$max" "$v" | sort -V | tail -1)"; fi
+	done < <(find "$dir" -type f \( -path '*/bin/*' -o -path '*/lib/*' -o -name '*.so' -o -name '*.so.*' \) 2>/dev/null)
+	printf '%s' "$max"
+}
+
 pack::build() {
 	local src="" out="" comp="auto"
 	while (($#)); do
@@ -77,6 +95,16 @@ pack::build() {
 
 	if [[ "${BS_MANIFEST[bundle_libs]:-false}" == true ]]; then
 		bundle::collect "$stage/$exec_rel" "$stage/lib"
+	fi
+
+	# Record the minimum glibc (max GLIBC_x.y symbol across the payload's ELF
+	# binaries) unless declared, so the runtime can warn clearly on too-old hosts.
+	if [[ -z "${BS_MANIFEST[min_glibc]:-}" ]]; then
+		local g; g="$(pack::_detect_glibc "$stage")"
+		if [[ -n "$g" ]]; then
+			printf 'min_glibc = %s\n' "$g" >> "$stage/manifest"
+			ui::info "detected min glibc: $g"
+		fi
 	fi
 
 	# Compress with xz; fall back to gzip when xz is unavailable or forced.

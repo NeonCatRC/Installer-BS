@@ -90,9 +90,42 @@ _bs_setup_env() {
 	fi
 }
 
+# --- glibc guard ------------------------------------------------------------
+# A package built against glibc X cannot run on an older glibc. The builder
+# records min_glibc; here we warn clearly (a GUI dialog when available) instead
+# of letting the loader die with a cryptic "version 'GLIBC_2.x' not found".
+_bs_host_glibc() {
+	local v; v="$(getconf GNU_LIBC_VERSION 2>/dev/null)"; v="${v##* }"
+	[[ "$v" =~ ^[0-9]+\.[0-9]+ ]] || v="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)"
+	[[ "$v" =~ ^[0-9]+\.[0-9]+ ]] && printf '%s' "$v"
+}
+_bs_vlt() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
+_bs_dialog() {
+	[[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] || return 0
+	if   command -v zenity   >/dev/null 2>&1; then zenity --error --no-wrap --title="Installer-BS" --text="$1" >/dev/null 2>&1 || true
+	elif command -v kdialog  >/dev/null 2>&1; then kdialog --title "Installer-BS" --error "$1"                >/dev/null 2>&1 || true
+	elif command -v xmessage >/dev/null 2>&1; then xmessage -center "$1"                                      >/dev/null 2>&1 || true
+	fi
+}
+_bs_assert_glibc() {
+	local need="${MF[min_glibc]:-}"
+	[[ -n "$need" && -z "${BS_NO_GLIBC_CHECK:-}" ]] || return 0
+	local have; have="$(_bs_host_glibc)"
+	[[ -n "$have" ]] || return 0
+	_bs_vlt "$have" "$need" || return 0
+	printf 'bs: this system has glibc %s, but this package needs >= %s\n' "$have" "$need" >&2
+	printf '    it will not run here — use a build for an older glibc, or set BS_NO_GLIBC_CHECK=1 to force\n' >&2
+	_bs_dialog "Installer-BS: cannot run ${MF[pretty_name]:-${MF[name]}}.
+
+This package needs glibc >= $need, but this system has $have.
+Use a build made for an older glibc, or set BS_NO_GLIBC_CHECK=1 to try anyway."
+	exit 1
+}
+
 # --- modes ------------------------------------------------------------------
 _bs_run() {
 	_bs_load_manifest
+	_bs_assert_glibc
 	local cache; cache="$(_bs_cache_dir)"
 	if [[ ! -e "$cache/.bs-ok" ]]; then
 		rm -rf "$cache"; mkdir -p "$cache"
@@ -121,6 +154,7 @@ _bs_info() {
 	[[ -n "${MF[comment]:-}" ]]     && printf '  comment     %s\n' "${MF[comment]}"
 	printf '  exec        %s\n' "${MF[exec]}"
 	[[ -n "${MF[categories]:-}" ]]  && printf '  categories  %s\n' "${MF[categories]}"
+	[[ -n "${MF[min_glibc]:-}" ]]   && printf '  min_glibc   %s\n' "${MF[min_glibc]}"
 	printf '  bundle_libs %s, isolate_home %s\n' "${MF[bundle_libs]:-false}" "${MF[isolate_home]:-false}"
 }
 
@@ -141,6 +175,7 @@ _bs_install() {
 	local system=false
 	[[ "${1:-}" == --system ]] && { system=true; shift; }
 	_bs_load_manifest
+	_bs_assert_glibc
 	local name="${MF[name]}"
 	_bs_paths "$name" "$system"
 	mkdir -p "$BS_DATADIR" "$BS_BINDIR" "$BS_APPSDIR"

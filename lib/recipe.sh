@@ -78,6 +78,7 @@ recipe::_write_manifest() {
 		printf 'terminal = %s\n'     "${terminal:-false}"
 		printf 'bundle_libs = %s\n'  "${bundle_libs:-false}"
 		printf 'isolate_home = %s\n' "${isolate_home:-false}"
+		[[ -n "${min_glibc:-}" ]] && printf 'min_glibc = %s\n' "$min_glibc"
 	} > "$1"
 }
 
@@ -125,7 +126,7 @@ recipe::_build() {
 	local work="$1" recipe="$2" out="$3"
 	local name="" version="" arch="" os="" exec="" pretty_name="" comment=""
 	local categories="" icon="" terminal="" bundle_libs="" isolate_home=""
-	local source_url="" source_sha256="" source_type=""
+	local source_url="" source_sha256="" source_type="" min_glibc=""
 	local srcdir="$work/src" pkgdir="$work/pkg"
 	mkdir -p "$srcdir" "$pkgdir"
 	# Directory of the recipe, so a recipe can reference its own sources.

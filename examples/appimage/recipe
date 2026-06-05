@@ -20,6 +20,7 @@ comment="${APP_COMMENT:-Repacked AppImage}"
 categories="${APP_CATEGORIES:-Utility;}"
 terminal=false
 bundle_libs=false
+min_glibc="${APP_MIN_GLIBC:-}"   # optional override; bs build auto-detects from the ELFs otherwise
 
 prepare() {
 	[[ -n "${APP_FILE:-}" && -f "${APP_FILE:-}" ]] || {
