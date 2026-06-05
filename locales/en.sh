@@ -27,6 +27,7 @@ declare -gA BS_STR_EN=(
 	[err_unknown_flag]="Unknown option: %s. Try 'bs --help'."
 	[err_info_usage]="Usage: bs info <package.bs>"
 	[err_build_usage]="Usage: bs build <src-dir> [-o out.bs] [--gzip]"
+	[err_is_recipe]="that looks like a recipe — build it with: bs make %s"
 	[err_not_found]="File or directory not found: %s"
 
 	[build_done]="built %s"

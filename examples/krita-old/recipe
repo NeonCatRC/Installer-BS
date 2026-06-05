@@ -1,0 +1,38 @@
+# Installer-BS recipe (experiment): repackage an OLD Krita AppImage that still
+# runs on ancient distros (e.g. Ubuntu 16.04 / glibc 2.23). Modern Krita 5.2.x
+# needs glibc >= 2.29; Krita 4.2.9 (2019) targets an older base and has a real
+# shot at launching on 16.04. If it still complains about glibc, drop the version
+# to 4.1.7 or 3.3.3 (both verified available with a .sha256 on download.kde.org).
+# Run on Linux x86_64:   ./bs make examples/krita-old/recipe
+#
+# Same honest repack as examples/krita — we just pick an old enough build. The
+# point: the .bs format imposes no OS floor of its own; the app's own glibc does.
+
+name=krita-old
+pretty_name="Krita (4.2.9)"
+version=4.2.9
+arch=x86_64
+os=linux
+exec=AppRun
+comment="Krita 4.2.9 — old AppImage repacked for ancient distros"
+categories="Graphics;2DGraphics;RasterGraphics;"
+terminal=false
+bundle_libs=false
+
+prepare() {
+	local base="https://download.kde.org/stable/krita/${version}/krita-${version}-x86_64.appimage"
+	local img="$srcdir/krita.appimage"
+
+	bs_fetch "$base" "$img" || return 1
+
+	# Verify against KDE's own published checksum.
+	if bs_fetch "$base.sha256" "$srcdir/krita.sha256"; then
+		local want got
+		want="$(cut -d' ' -f1 < "$srcdir/krita.sha256")"
+		got="$(sha256sum "$img" | cut -d' ' -f1)"
+		[[ "$want" == "$got" ]] || { ui::error "Krita AppImage failed KDE's published sha256"; return 1; }
+		ui::ok "verified against KDE's published sha256"
+	fi
+
+	bs_appimage_extract "$img" "$pkgdir" || return 1
+}

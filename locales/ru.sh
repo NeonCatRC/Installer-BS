@@ -27,6 +27,7 @@ declare -gA BS_STR_RU=(
 	[err_unknown_flag]="Неизвестная опция: %s. Попробуй 'bs --help'."
 	[err_info_usage]="Использование: bs info <пакет.bs>"
 	[err_build_usage]="Использование: bs build <каталог> [-o out.bs] [--gzip]"
+	[err_is_recipe]="похоже на рецепт — собирай через: bs make %s"
 	[err_not_found]="Файл или каталог не найден: %s"
 
 	[build_done]="собрано %s"

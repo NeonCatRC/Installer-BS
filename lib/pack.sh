@@ -28,6 +28,12 @@ pack::build() {
 	done
 
 	[[ -n "$src" ]] || { ui::error "$(i18n::t err_build_usage)"; return 2; }
+	# A recipe is built with `bs make`, not `bs build` — redirect instead of a
+	# confusing "manifest not found".
+	if [[ -f "$src" && "${src##*/}" == recipe ]] || { [[ -d "$src" ]] && [[ ! -f "$src/manifest" && -f "$src/recipe" ]]; }; then
+		local hint="$src"; [[ -d "$src" ]] && hint="$src/recipe"
+		ui::error "$(i18n::t err_is_recipe "$hint")"; return 2
+	fi
 	[[ -d "$src" ]] || { ui::error "$(i18n::t err_not_found "$src")"; return 1; }
 
 	manifest::parse "$src/manifest" || return 1
