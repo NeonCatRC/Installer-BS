@@ -3,24 +3,43 @@
 # a browser downloads fine, or simply for offline/local files.
 #
 # Usage (download the AppImage with your browser first, then):
-#   BS_APPIMAGE=~/krita-4.2.9-x86_64.appimage BS_NAME=krita-old BS_VERSION=4.2.9 \
-#       ./bs make examples/appimage/recipe
+#   APP_FILE=~/krita-4.2.9-x86_64.appimage APP_NAME=krita-old APP_VERSION=4.2.9 \
+#     APP_PRETTY="Krita (4.2.9)" APP_CATEGORIES="Graphics;2DGraphics;" \
+#     ./bs make examples/appimage/recipe
 #
-# Optional env: BS_PRETTY, BS_COMMENT, BS_CATEGORIES, BS_EXEC (default AppRun).
+# NB: the env vars are APP_* — NOT BS_*, which collide with bs's own readonly
+# globals (BS_NAME/BS_VERSION) and would be ignored.
 
-name="${BS_NAME:-app}"
-version="${BS_VERSION:-1.0}"
+name="${APP_NAME:-app}"
+version="${APP_VERSION:-1.0}"
 arch=x86_64
 os=linux
-exec="${BS_EXEC:-AppRun}"
-pretty_name="${BS_PRETTY:-$name}"
-comment="${BS_COMMENT:-Repacked AppImage}"
-categories="${BS_CATEGORIES:-Utility;}"
+exec=bs-run
+pretty_name="${APP_PRETTY:-$name}"
+comment="${APP_COMMENT:-Repacked AppImage}"
+categories="${APP_CATEGORIES:-Utility;}"
 terminal=false
 bundle_libs=false
 
 prepare() {
-	[[ -n "${BS_APPIMAGE:-}" && -f "${BS_APPIMAGE:-}" ]] || {
-		ui::error "set BS_APPIMAGE=/path/to/file.appimage (an existing file)"; return 1; }
-	bs_appimage_extract "$BS_APPIMAGE" "$pkgdir" || return 1
+	[[ -n "${APP_FILE:-}" && -f "${APP_FILE:-}" ]] || {
+		ui::error "set APP_FILE=/path/to/file.appimage (an existing file)"; return 1; }
+	bs_appimage_extract "$APP_FILE" "$pkgdir" || return 1
+	[[ -e "$pkgdir/AppRun" ]] || { ui::error "extracted AppImage has no AppRun"; return 1; }
+
+	# When an AppImage runs normally its runtime FUSE-mounts it and exports APPDIR
+	# (and, for python-bundled apps, the interpreter finds its stdlib relative to
+	# the mount). We run it EXTRACTED, so set those up ourselves. Without this,
+	# Krita's bundled Python fails with "No module named 'encodings'".
+	cat > "$pkgdir/bs-run" <<'WRAP'
+#!/usr/bin/env bash
+root="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+export APPDIR="$root"
+# Relocate a bundled Python interpreter, if present (usr/lib/python3.X).
+if compgen -G "$root/usr/lib/python3.*" >/dev/null 2>&1; then
+	export PYTHONHOME="$root/usr"
+fi
+exec "$root/AppRun" "$@"
+WRAP
+	chmod +x "$pkgdir/bs-run"
 }
