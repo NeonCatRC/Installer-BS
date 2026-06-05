@@ -1,0 +1,26 @@
+# Installer-BS recipe: wrap ANY local AppImage into a .bs — no download.
+# Handy on EOL distros where curl can't reach modern TLS (expired CA bundle) but
+# a browser downloads fine, or simply for offline/local files.
+#
+# Usage (download the AppImage with your browser first, then):
+#   BS_APPIMAGE=~/krita-4.2.9-x86_64.appimage BS_NAME=krita-old BS_VERSION=4.2.9 \
+#       ./bs make examples/appimage/recipe
+#
+# Optional env: BS_PRETTY, BS_COMMENT, BS_CATEGORIES, BS_EXEC (default AppRun).
+
+name="${BS_NAME:-app}"
+version="${BS_VERSION:-1.0}"
+arch=x86_64
+os=linux
+exec="${BS_EXEC:-AppRun}"
+pretty_name="${BS_PRETTY:-$name}"
+comment="${BS_COMMENT:-Repacked AppImage}"
+categories="${BS_CATEGORIES:-Utility;}"
+terminal=false
+bundle_libs=false
+
+prepare() {
+	[[ -n "${BS_APPIMAGE:-}" && -f "${BS_APPIMAGE:-}" ]] || {
+		ui::error "set BS_APPIMAGE=/path/to/file.appimage (an existing file)"; return 1; }
+	bs_appimage_extract "$BS_APPIMAGE" "$pkgdir" || return 1
+}
