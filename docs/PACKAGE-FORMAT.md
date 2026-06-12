@@ -17,10 +17,19 @@ __BS_PAYLOAD__                        # marker: the ONLY whole line equal to thi
 ```
 
 - The payload begins on the line **after** the marker. The stub locates it with
-  `grep -an '^__BS_PAYLOAD__$' "$0" | head -1` and streams from there with `tail -n +N`.
+  `grep -m1 -an '^__BS_PAYLOAD__$' "$0"` (stops at the marker; never scans the
+  binary tail) and streams from there with `tail -n +N`. The offset and the
+  payload's magic bytes are computed once per invocation and cached.
 - `bs build` forms a package as `cat stub.sh <marker is the stub's last line> payload > out.bs`.
 - The stub `exit`s before the marker, so the binary payload is never parsed as code.
 - Default file name: `<name>-<version>-<arch>.bs`.
+
+### Reproducibility
+
+On GNU tar, `bs build` fixes the member order (`--sort=name`), owner (0:0) and
+mtimes (`SOURCE_DATE_EPOCH`, default 0), so the same input tree produces a
+**byte-identical** `.bs`. Combined with `build_id` (below) this also means an
+unchanged rebuild keeps its extraction cache warm.
 
 ### Compression
 
@@ -84,10 +93,15 @@ Parsing rules:
 | `comment`      | —         | `Comment=` in the `.desktop`                       |
 | `categories`   | —         | XDG categories, `;`-separated                      |
 | `icon`         | —         | icon path inside the payload (png/svg)             |
+| `icon_size`    | `256`     | raster icon size (hicolor `NxN`); svg goes to `scalable` |
 | `terminal`     | `false`   | `Terminal=` in the `.desktop`                      |
-| `bundle_libs`  | `false`   | builder collects non-system `.so` via `ldd`        |
+| `mime_types`   | —         | `MimeType=` in the `.desktop` (`;`-separated/terminated) |
+| `extra_exec`   | —         | space-separated extra executables; one launcher per basename |
+| `bash_completion` | —      | completion file inside the payload, installed as `completions/<name>` |
+| `bundle_libs`  | `false`   | builder collects non-system `.so` via `ldd` (main + extra execs) |
 | `isolate_home` | `false`   | runtime redirects `HOME`/`XDG_*` into the app dir  |
 | `min_glibc`    | —         | minimum host glibc (e.g. `2.31`); auto-detected by `bs build` |
+| `build_id`     | (auto)    | content hash of the payload tree, appended by `bs build`; cache key |
 | `maintainer`   | —         | who built the package                              |
 | `homepage`     | —         | project URL                                        |
 
@@ -105,6 +119,7 @@ passed straight to the application (so app arguments never clash).
 | `sudo ./app.bs --install --system` | integrate system-wide (`/opt`, `/usr/local`)     |
 | `./app.bs --uninstall [--system]`| remove an installed copy                           |
 | `./app.bs --extract [DIR]`       | unpack the payload                                 |
+| `./app.bs --check`               | integrity self-test (payload stream + sidecars)    |
 | `./app.bs --info`                | print metadata (reads only the manifest)           |
 | `./app.bs --help`                | usage                                              |
 
@@ -112,35 +127,52 @@ Run-time environment: `PATH` gets `…/bin`; if `lib/` exists, `LD_LIBRARY_PATH`
 gets it prepended; if `isolate_home = true`, `HOME` and `XDG_*` are redirected
 into `<appdir>/home` so configs stay with the app.
 
+Before running or installing, the package compares its `os`/`arch` to the host
+(same normalization as the builder) and refuses a foreign platform with a clear
+message instead of the kernel's `Exec format error`. Bypass: `BS_NO_ARCH_CHECK=1`.
+
 ### Install destinations
 
 Portable run cache:
 ```
 ${XDG_CACHE_HOME:-~/.cache}/installer-bs/<name>-<version>/
 ```
+The cache is keyed on the manifest's `build_id` (stored in the dir's `.bs-ok`):
+a rebuilt package with the same name-version re-extracts instead of running
+stale files. Extraction goes to a temp dir and is published with an atomic
+rename, so concurrent first runs never see a half-extracted tree. Inspect and
+prune the caches with `bs cache [list|clean]`.
 
 `--install` (user, default — no root):
 ```
 ${XDG_DATA_HOME:-~/.local/share}/installer-bs/<name>/      # payload
-~/.local/bin/<name>                                        # generated launcher
+~/.local/bin/<name>                                        # generated launcher (+ one per extra_exec basename)
 ${XDG_DATA_HOME:-~/.local/share}/applications/<name>.desktop
-${XDG_DATA_HOME:-~/.local/share}/icons/<name>.<ext>        # if icon set
+${XDG_DATA_HOME:-~/.local/share}/icons/hicolor/scalable/apps/<name>.svg   # svg icon
+${XDG_DATA_HOME:-~/.local/share}/icons/hicolor/<N>x<N>/apps/<name>.<ext>  # raster icon (icon_size)
+${XDG_DATA_HOME:-~/.local/share}/man/man<N>/...            # links to payload share/man pages
+${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/<name>  # if bash_completion set
 <appdir>/.bs-files                                         # paths to remove on uninstall
 ```
 
-`--install --system` (root):
-```
-/opt/<name>/                              # payload
-/usr/local/bin/<name>                     # launcher
-/usr/local/share/applications/<name>.desktop
-/usr/local/share/icons/<name>.<ext>
-```
+`--install --system` (root): same layout under `/opt/<name>/` (payload) and
+`/usr/local/{bin,share/applications,share/icons,share/man,share/bash-completion}`.
+
+Icons land in the **hicolor theme**, so the `.desktop`'s `Icon=` is the themed
+name `<name>`, not an absolute path. Man pages found under the payload's
+`share/man/man<N>/` are linked into the standard man path (man-db discovers it
+next to the launcher's bin dir).
 
 **Never** a directory in the filesystem root. FHS / XDG only.
 
+Installing over an existing install is a clean upgrade: the old version's
+recorded files and payload are removed first (no orphans from files the new
+version dropped), while `<appdir>/home` — the isolated user data — survives.
+
 Uninstall reads `<appdir>/.bs-files` (a plain list written at install time — no
 sed-injection into a script, unlike the original) and removes those paths, then
-the app dir.
+the app dir. The same works without the original `.bs` file at all:
+`bs list`, `bs info <name>`, `bs uninstall <name> [--system]`.
 
 ---
 
@@ -153,6 +185,13 @@ Two independent, optional sidecars — both honestly labeled:
 - `<file>.bs.sig` (OpenPGP detached, armored): real authenticity. Created by
   `bs sign <pkg> [-k KEYID]` and checked by `bs verify <pkg>` via `gpg`. The
   checksum proves the bytes are intact; the signature proves **who** built them.
+
+`./app.bs --check` is the package's own integrity self-test. It deliberately
+embeds **no** checksum (a hash stored inside the file it "protects" is the
+original's MD5 theater with extra steps): the payload is streamed through the
+decompressor, whose container checksums (xz CRC64 / gzip CRC32) catch
+corruption and truncation; the `.sha256` and `.sig` sidecars are verified too
+when they sit next to the file.
 
 ## 5. Compatibility (library bundling)
 
@@ -191,14 +230,23 @@ directory) to find bundled sources.
 A recipe sets the manifest fields (`name`, `version`, `arch`, `os`, `exec`, and
 the optional ones) and obtains the files in one of two ways:
 
-- declare `source_url` + `source_type` (`appimage` | `tar` | `file`) and,
-  ideally, `source_sha256` — the default flow fetches, verifies and lays out the
-  payload; or
+- declare `source_url` + `source_type` (`appimage` | `tar` | `zip` | `deb` |
+  `file`) and, ideally, `source_sha256` — the default flow fetches, verifies and
+  lays out the payload (a `.deb` is read with binutils `ar`, no dpkg needed); or
 - define a `prepare()` function that populates `$pkgdir`, using helpers:
   - `bs_fetch URL DEST [SHA256]` — download (or copy a local path / `file://`),
     verifying the checksum when given;
+  - `bs_fetch_all` — fetch every URL of the recipe's `sources=()` array into
+    `$srcdir`, verified against `sha256s=()` by index (multi-input recipes);
   - `bs_appimage_extract FILE DESTDIR` — extract an AppImage's tree (Linux host
-    of the matching architecture).
+    of the matching architecture);
+  - `bs_zip_extract FILE DESTDIR`, `bs_deb_extract FILE DESTDIR`.
+
+Checksummed downloads are kept in a content-addressed cache
+(`$XDG_CACHE_HOME/installer-bs/downloads/sha256-<hash>`), so a repeated
+`bs make` works offline; reuse is safe by construction because the key **is**
+the verified hash. Unverified downloads are never cached. Disable with
+`BS_NO_FETCH_CACHE=1`; prune with `bs cache clean`.
 
 `bs make` then writes the manifest from the recipe fields and hands the staged
 directory to `bs build`. Example: [`examples/krita/recipe`](../examples/krita/recipe)

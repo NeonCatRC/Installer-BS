@@ -50,10 +50,19 @@ pretty_name  = My App          # имя в меню
 comment      = Short description
 categories   = Utility;        # XDG-категории
 icon         = share/my-app.svg
+icon_size    = 256             # для растровой иконки (hicolor NxN); svg → scalable
 terminal     = false
 bundle_libs  = false           # true → собрать .so через ldd (см. Путь 3)
 isolate_home = false           # true → конфиги приложения держать внутри пакета
+
+# extra_exec      = bin/my-tool      # доп. бинари: лаунчер на каждый basename
+# mime_types      = text/x-my;       # MimeType= в .desktop
+# bash_completion = share/completions/my-app.bash
 ```
+
+`bs build` сам допишет `min_glibc` (для ELF) и `build_id` (контент-хэш дерева —
+ключ кэша распаковки). На GNU tar сборка **воспроизводима**: тот же входной
+каталог → бит-в-бит тот же `.bs` (эпоха mtime — `SOURCE_DATE_EPOCH`, по умолчанию 0).
 
 **1.3. Собери:**
 
@@ -78,7 +87,8 @@ isolate_home = false           # true → конфиги приложения д
 
 Рецепт объявляет те же поля, что и манифест, и получает файлы одним из двух способов:
 
-**А) Через `source_url` + `source_type`** (`appimage` | `tar` | `file`) и (желательно) `source_sha256`:
+**А) Через `source_url` + `source_type`** (`appimage` | `tar` | `zip` | `deb` | `file`)
+и (желательно) `source_sha256`. `.deb` читается обычным `ar` из binutils — dpkg не нужен:
 
 ```ini
 name=foo
@@ -93,8 +103,14 @@ source_sha256=<hash>      # пусто → скачается без прове�
 
 **Б) Через функцию `prepare()`** — для нетривиальной раскладки. Доступны хелперы и переменные:
 - `bs_fetch URL DEST [SHA256]` — скачать (или скопировать локальный путь / `file://`), проверить sha256;
+- `bs_fetch_all` — скачать все URL из массивов `sources=()` / `sha256s=()` в `$srcdir` (мульти-источники);
 - `bs_appimage_extract FILE DESTDIR` — распаковать AppImage (нужен Linux нужной архитектуры);
+- `bs_zip_extract FILE DESTDIR`, `bs_deb_extract FILE DESTDIR` — zip / deb;
 - `$srcdir` — рабочий каталог, `$pkgdir` — что попадёт в пакет, `$RECIPE_DIR` — каталог самого рецепта.
+
+Скачанное с указанным `sha256` кэшируется по этому хэшу
+(`~/.cache/installer-bs/downloads/`): повторный `bs make` работает офлайн.
+Без хэша — не кэшируется (честно). Отключить: `BS_NO_FETCH_CACHE=1`.
 
 ```sh
 ./bs make examples/krita/recipe       # реальный пример: офиц. AppImage Krita + проверка KDE sha256
@@ -149,11 +165,26 @@ ELF-бинарь, а хост — той же архитектуры (`ldd` ре
 ./my-app-*.bs --install             # в меню пользователя: ~/.local/{bin,share/applications}
 sudo ./my-app-*.bs --install --system   # системно: /opt + /usr/local
 ./my-app-*.bs --uninstall [--system]    # снять подчистую (по списку .bs-files)
+./my-app-*.bs --check               # самопроверка целостности (CRC контейнера + .sha256/.sig рядом)
 ./my-app-*.bs --info                # метаданные (читает только manifest)
 ./my-app-*.bs --extract DIR         # просто распаковать
 ```
 
 Управляющие флаги действуют только как **первый** аргумент; всё остальное уходит приложению.
+Не та архитектура или ОС — пакет откажется внятно (обход: `BS_NO_ARCH_CHECK=1`).
+`--install` поверх старой версии = чистый апгрейд: файлы старой версии снимаются по списку,
+`home/` с данными пользователя переживает.
+
+Установленным управляет и сам `bs` — без исходного `.bs`-файла:
+
+```sh
+./bs list                  # что установлено (user и system)
+./bs info my-app           # метаданные установленного по имени
+./bs uninstall my-app      # удалить по имени (--system для системного)
+./bs run my-app-*.bs       # фронтенд запуска файла
+./bs cache                 # кэши портативных запусков и скачек: показать
+./bs cache clean [my-app]  # почистить (всё или по имени)
+```
 
 ---
 
@@ -181,6 +212,8 @@ sudo ./my-app-*.bs --install --system   # системно: /opt + /usr/local
 | `invalid name '…'` | Имя не по `^[a-z0-9][a-z0-9._-]*$`. Только строчные, цифры, `._-`. |
 | `exec is not an ELF binary; nothing to bundle` | `bundle_libs=true`, а `exec` — скрипт. Бандлить нечего — это норм, либо укажи реальный бинарь. |
 | `bundle_libs needs a native build host` | Кросс-арх + бандлинг. `ldd` работает только на родной архитектуре. |
+| `this package is built for linux/x86_64, but…` | Пакет не для этой машины. Возьми сборку под свою платформу; форс — `BS_NO_ARCH_CHECK=1`. |
+| `payload is corrupt or truncated` при `--check` | Битая/недокачанная копия. Скачай заново и проверь ещё раз. |
 | `line N: … command not found` при `bs make` | Незакавыченное значение в рецепте (пробел/`;`). Возьми в кавычки. |
 | GUI не стартует в контейнере (`could not connect to display`) | Нужен дисплей. Тестируй на десктопе/в VM, не headless. |
 

@@ -11,8 +11,19 @@ exec         = bin/example
 comment      = One-line description shown in the menu
 categories   = Utility;
 icon         = share/example.svg
+icon_size    = 256
 terminal     = false
 bundle_libs  = false
 isolate_home = false
 maintainer   =
 homepage     =
+
+# Extra executables: one launcher per basename at install time.
+# extra_exec      = bin/example-tool bin/example-cli
+# MIME types for the .desktop entry (";"-separated, ";"-terminated).
+# mime_types      = text/x-example;
+# Bash completion file inside the payload, installed as completions/<name>.
+# bash_completion = share/completions/example.bash
+
+# build_id is appended automatically by `bs build` (content hash; cache key).
+# min_glibc is detected automatically by `bs build` for ELF payloads.
