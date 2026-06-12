@@ -16,7 +16,7 @@ fi
 files=(
 	bs
 	lib/core.sh lib/ui.sh lib/i18n.sh lib/manifest.sh lib/pack.sh lib/bundle.sh
-	lib/sign.sh lib/recipe.sh lib/platform/linux.sh
+	lib/sign.sh lib/recipe.sh lib/installed.sh lib/platform/linux.sh
 	locales/en.sh locales/ru.sh
 	template/stub.sh
 	tests/lint.sh tests/e2e.sh
