@@ -30,6 +30,9 @@ export HOME="$WORK/home"
 export XDG_CACHE_HOME="$HOME/.cache" XDG_DATA_HOME="$HOME/.local/share"
 export XDG_CONFIG_HOME="$HOME/.config" XDG_STATE_HOME="$HOME/.local/state"
 mkdir -p "$HOME"
+# The example packages declare linux/x86_64; let them run on any test host.
+# The platform-guard test below re-enables the check explicitly.
+export BS_NO_ARCH_CHECK=1
 
 out="$WORK/hello.bs"
 
@@ -77,6 +80,153 @@ bash "$out" --uninstall >/dev/null 2>&1
 want_gone "$appdir"   "uninstall: app dir removed"
 want_gone "$launcher" "uninstall: launcher removed"
 want_gone "$desktop"  "uninstall: .desktop removed"
+
+printf '== registry (bs list / info / uninstall by name) ==\n'
+bash "$out" --install >/dev/null 2>&1
+list_out="$(bsrun list 2>/dev/null)"
+if contains "$list_out" "hello"; then ok "bs list shows the installed package"; else no "bs list shows the installed package"; fi
+name_info="$(bsrun info hello 2>/dev/null)"
+if contains "$name_info" "installed"; then ok "bs info <name> works without the .bs file"; else no "bs info <name> works without the .bs file"; fi
+if bsrun -y uninstall hello >/dev/null 2>&1; then ok "bs uninstall <name> exits 0"; else no "bs uninstall <name> exits 0"; fi
+want_gone "$appdir"   "registry uninstall: app dir removed"
+want_gone "$launcher" "registry uninstall: launcher removed"
+want_gone "$desktop"  "registry uninstall: .desktop removed"
+if bsrun -y uninstall hello >/dev/null 2>&1; then no "uninstalling a missing name fails"; else ok "uninstalling a missing name fails"; fi
+
+printf '== bs run ==\n'
+run2_out="$(bsrun run "$out" 2>/dev/null)"
+if contains "$run2_out" "Hello from a real"; then ok "bs run executes a package"; else no "bs run executes a package"; fi
+
+printf '== self-check (--check) ==\n'
+if bash "$out" --check >/dev/null 2>&1; then ok "--check passes on an intact package"; else no "--check passes on an intact package"; fi
+total=$(wc -c < "$out")
+head -c "$((total - 200))" "$out" > "$WORK/trunc.bs" 2>/dev/null
+if bash "$WORK/trunc.bs" --check >/dev/null 2>&1; then no "--check rejects a truncated package"; else ok "--check rejects a truncated package"; fi
+
+printf '== platform guard ==\n'
+alien="$WORK/alien"; mkdir -p "$alien/bin"
+printf '#!/usr/bin/env bash\necho alien\n' > "$alien/bin/a"; chmod +x "$alien/bin/a"
+printf 'name = alien\nversion = 1\narch = fakearch\nos = linux\nexec = bin/a\n' > "$alien/manifest"
+bsrun build "$alien" -o "$WORK/alien.bs" >/dev/null 2>&1
+guard_rc=0
+guard_out="$(BS_NO_ARCH_CHECK='' bash "$WORK/alien.bs" 2>&1)" || guard_rc=$?
+if [[ "$guard_rc" -ne 0 ]] && contains "$guard_out" "built for"; then ok "wrong arch fails with a clear message"; else no "wrong arch fails with a clear message"; fi
+if bash "$WORK/alien.bs" --info >/dev/null 2>&1; then ok "--info ignores the platform guard"; else no "--info ignores the platform guard"; fi
+
+printf '== overwrite confirmation ==\n'
+if bsrun build "$alien" -o "$WORK/alien.bs" </dev/null >/dev/null 2>&1; then
+	no "overwrite without --yes and tty is refused"
+else
+	ok "overwrite without --yes and tty is refused"
+fi
+if bsrun -y build "$alien" -o "$WORK/alien.bs" >/dev/null 2>&1; then ok "overwrite with --yes proceeds"; else no "overwrite with --yes proceeds"; fi
+
+printf '== stale cache invalidation (build_id) ==\n'
+sc="$WORK/sc"; mkdir -p "$sc/bin"
+printf '#!/usr/bin/env bash\necho VARIANT-A\n' > "$sc/bin/app"; chmod +x "$sc/bin/app"
+printf 'name = scache\nversion = 9.9\narch = x86_64\nos = linux\nexec = bin/app\n' > "$sc/manifest"
+bsrun -y build "$sc" -o "$WORK/sc.bs" >/dev/null 2>&1
+sc_out="$(bash "$WORK/sc.bs" 2>/dev/null)"
+printf '#!/usr/bin/env bash\necho VARIANT-B\n' > "$sc/bin/app"; chmod +x "$sc/bin/app"
+bsrun -y build "$sc" -o "$WORK/sc.bs" >/dev/null 2>&1
+sc_out2="$(bash "$WORK/sc.bs" 2>/dev/null)"
+if contains "$sc_out" "VARIANT-A" && contains "$sc_out2" "VARIANT-B"; then
+	ok "rebuilt same name-version re-extracts (no stale cache)"
+else
+	no "rebuilt same name-version re-extracts (no stale cache)"
+fi
+
+printf '== reproducible build ==\n'
+if tar --version 2>/dev/null | grep -q GNU; then
+	bsrun build "$ROOT/examples/hello" -o "$WORK/r1.bs" >/dev/null 2>&1
+	bsrun build "$ROOT/examples/hello" -o "$WORK/r2.bs" >/dev/null 2>&1
+	if cmp -s "$WORK/r1.bs" "$WORK/r2.bs"; then ok "two builds are byte-identical"; else no "two builds are byte-identical"; fi
+else
+	printf '  skip: non-GNU tar\n'
+fi
+
+printf '== desktop integration (icon/mime/man/completion) ==\n'
+dx="$WORK/dx"; mkdir -p "$dx/bin" "$dx/share/man/man1" "$dx/share/completions"
+printf '#!/usr/bin/env bash\necho dx ok\n' > "$dx/bin/dx"; chmod +x "$dx/bin/dx"
+printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > "$dx/share/dx.svg"
+printf '.TH DX 1\n' > "$dx/share/man/man1/dx.1"
+printf 'complete -W "go" dx\n' > "$dx/share/completions/dx.bash"
+cat > "$dx/manifest" <<'MF'
+name = dx
+version = 1
+arch = x86_64
+os = linux
+exec = bin/dx
+icon = share/dx.svg
+mime_types = text/x-dx;
+bash_completion = share/completions/dx.bash
+MF
+bsrun build "$dx" -o "$WORK/dx.bs" >/dev/null 2>&1
+bash "$WORK/dx.bs" --install >/dev/null 2>&1
+dxdesk="$XDG_DATA_HOME/applications/dx.desktop"
+want_file "$XDG_DATA_HOME/icons/hicolor/scalable/apps/dx.svg" "icon lands in the hicolor theme"
+file_has  "Icon=dx" "$dxdesk" "desktop uses the themed icon name"
+file_has  "MimeType=text/x-dx;" "$dxdesk" "desktop carries MimeType"
+want_file "$XDG_DATA_HOME/man/man1/dx.1" "man page linked into the user man path"
+want_file "$XDG_DATA_HOME/bash-completion/completions/dx" "bash completion installed"
+bash "$WORK/dx.bs" --uninstall >/dev/null 2>&1
+want_gone "$XDG_DATA_HOME/icons/hicolor/scalable/apps/dx.svg" "uninstall removes the themed icon"
+want_gone "$XDG_DATA_HOME/man/man1/dx.1" "uninstall removes the man link"
+want_gone "$XDG_DATA_HOME/bash-completion/completions/dx" "uninstall removes the completion"
+
+printf '== extra_exec + clean upgrade ==\n'
+up="$WORK/up"; mkdir -p "$up/bin"
+printf '#!/usr/bin/env bash\necho upapp v1\n' > "$up/bin/upapp"; chmod +x "$up/bin/upapp"
+printf '#!/usr/bin/env bash\necho xtool here\n' > "$up/bin/xtool"; chmod +x "$up/bin/xtool"
+printf 'name = upapp\nversion = 1\narch = x86_64\nos = linux\nexec = bin/upapp\nextra_exec = bin/xtool\n' > "$up/manifest"
+bsrun build "$up" -o "$WORK/up1.bs" >/dev/null 2>&1
+bash "$WORK/up1.bs" --install >/dev/null 2>&1
+want_file "$HOME/.local/bin/xtool" "extra_exec gets its own launcher"
+xt_out="$(bash "$HOME/.local/bin/xtool" 2>/dev/null)"
+if contains "$xt_out" "xtool here"; then ok "extra launcher runs the extra exec"; else no "extra launcher runs the extra exec"; fi
+# v2 drops the extra tool; --install over v1 must not leave its launcher behind.
+rm -f "$up/bin/xtool"
+printf 'name = upapp\nversion = 2\narch = x86_64\nos = linux\nexec = bin/upapp\n' > "$up/manifest"
+bsrun build "$up" -o "$WORK/up2.bs" >/dev/null 2>&1
+bash "$WORK/up2.bs" --install >/dev/null 2>&1
+want_gone "$HOME/.local/bin/xtool" "upgrade removes the dropped extra launcher"
+file_has "version = 2" "$XDG_DATA_HOME/installer-bs/upapp/manifest" "upgrade replaced the payload"
+bash "$WORK/up2.bs" --uninstall >/dev/null 2>&1
+
+printf '== recipe build (deb) ==\n'
+if command -v ar >/dev/null 2>&1; then
+	debroot="$WORK/debroot"; mkdir -p "$debroot/usr/bin"
+	printf '#!/usr/bin/env bash\necho debby ok\n' > "$debroot/usr/bin/debby"; chmod +x "$debroot/usr/bin/debby"
+	( cd "$debroot" && tar -czf "$WORK/data.tar.gz" . )
+	printf '2.0\n' > "$WORK/debian-binary"
+	tar -czf "$WORK/control.tar.gz" --files-from /dev/null
+	( cd "$WORK" && ar rc fake.deb debian-binary control.tar.gz data.tar.gz )
+	debsum="$(sha256sum "$WORK/fake.deb" | cut -d' ' -f1)"
+	cat > "$WORK/recipe_deb" <<RECIPE
+name=debby
+version=1.0
+arch=x86_64
+os=linux
+exec=usr/bin/debby
+source_type=deb
+source_url=$WORK/fake.deb
+source_sha256=$debsum
+RECIPE
+	if bsrun make "$WORK/recipe_deb" -o "$WORK/debby.bs" >/dev/null 2>&1; then ok "recipe build (deb) exits 0"; else no "recipe build (deb) exits 0"; fi
+	deb_out="$(bash "$WORK/debby.bs" 2>/dev/null)"
+	if contains "$deb_out" "debby ok"; then ok "deb-sourced package runs"; else no "deb-sourced package runs"; fi
+else
+	printf '  skip: no ar (binutils)\n'
+fi
+
+printf '== cache command ==\n'
+cache_list="$(bsrun cache 2>/dev/null)"
+if contains "$cache_list" "installer-bs"; then ok "bs cache lists extraction dirs"; else no "bs cache lists extraction dirs"; fi
+if bsrun -y cache clean scache >/dev/null 2>&1; then ok "bs cache clean <name> exits 0"; else no "bs cache clean <name> exits 0"; fi
+want_gone "$XDG_CACHE_HOME/installer-bs/scache-9.9" "named cache dir removed"
+want_file "$XDG_CACHE_HOME/installer-bs/hello-1.0.0" "other cache dirs survive a named clean"
+bsrun -y cache clean >/dev/null 2>&1
+want_gone "$XDG_CACHE_HOME/installer-bs/hello-1.0.0" "full clean removes the rest"
 
 printf '== injection regression ==\n'
 evil="$WORK/evil"; mkdir -p "$evil/bin"
