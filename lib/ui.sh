@@ -23,11 +23,14 @@ ui::ok()    { printf '%s\n' "${_bs_green}ok:${_bs_reset} $*"; }
 ui::warn()  { printf '%s\n' "${_bs_yellow}warn:${_bs_reset} $*" >&2; }
 ui::error() { printf '%s\n' "${_bs_red}error:${_bs_reset} $*" >&2; }
 
-# Ask a yes/no question. Honors --yes and non-interactive stdin (returns yes).
+# Ask a yes/no question. Honors --yes; without a TTY the answer is NO — a pipe
+# must not silently approve a destructive step (pass --yes to scripts instead).
 ui::confirm() {
 	local prompt="${1:-Continue?}"
-	if [[ "$_bs_assume_yes" == true || ! -t 0 ]]; then
-		return 0
+	[[ "$_bs_assume_yes" == true ]] && return 0
+	if [[ ! -t 0 ]]; then
+		ui::warn "$prompt — no tty, assuming no (use --yes to override)"
+		return 1
 	fi
 	local reply
 	read -r -p "$prompt [y/N] " reply
