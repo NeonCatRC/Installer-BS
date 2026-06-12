@@ -14,6 +14,15 @@ pack::_human() {
 	fi
 }
 
+# Content hash of a staged tree: sha256 over every file's hash + path, sorted.
+# Used as the package's build_id — the runtime keys its extraction cache on it,
+# so a rebuilt package with the same name-version never runs from a stale cache.
+pack::_tree_id() {
+	local dir="$1"
+	( cd "$dir" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- ) \
+		| sha256sum | cut -d' ' -f1
+}
+
 # Print the highest GLIBC_x.y symbol version required across a tree's ELF binaries
 # (= the minimum glibc to run it). Needs objdump or readelf; empty if neither is
 # present or nothing links glibc.
@@ -61,6 +70,23 @@ pack::build() {
 	local exec_rel="${BS_MANIFEST[exec]}"
 	[[ -e "$src/$exec_rel" ]] || { ui::error "exec not found in source: $exec_rel"; return 1; }
 
+	# extra_exec: space-separated extra executables. Each must exist; their
+	# basenames become launcher names at install time, so they must be unique
+	# and must not collide with the package name (= the main launcher).
+	local -a extras=()
+	if [[ -n "${BS_MANIFEST[extra_exec]:-}" ]]; then
+		read -r -a extras <<< "${BS_MANIFEST[extra_exec]}"
+		local x seen=" $name "
+		for x in "${extras[@]}"; do
+			[[ -e "$src/$x" ]] || { ui::error "extra_exec not found in source: $x"; return 1; }
+			local base="${x##*/}"
+			if [[ "$seen" == *" $base "* ]]; then
+				ui::error "extra_exec launcher name collides: $base"; return 1
+			fi
+			seen+="$base "
+		done
+	fi
+
 	# Library bundling resolves deps with the host loader, so it needs a native host.
 	if [[ "${BS_MANIFEST[bundle_libs]:-false}" == true ]]; then
 		core::detect_platform
@@ -88,6 +114,10 @@ pack::build() {
 		| ( cd "$stage" && tar -xf - )
 
 	chmod +x "$stage/$exec_rel" 2>/dev/null || ui::warn "could not set +x on $exec_rel"
+	local x
+	for x in "${extras[@]}"; do
+		chmod +x "$stage/$x" 2>/dev/null || ui::warn "could not set +x on $x"
+	done
 
 	if [[ -n "${BS_MANIFEST[icon]:-}" && ! -e "$src/${BS_MANIFEST[icon]}" ]]; then
 		ui::warn "icon declared but missing: ${BS_MANIFEST[icon]}"
@@ -95,6 +125,9 @@ pack::build() {
 
 	if [[ "${BS_MANIFEST[bundle_libs]:-false}" == true ]]; then
 		bundle::collect "$stage/$exec_rel" "$stage/lib"
+		for x in "${extras[@]}"; do
+			bundle::collect "$stage/$x" "$stage/lib"
+		done
 	fi
 
 	# Record the minimum glibc (max GLIBC_x.y symbol across the payload's ELF
@@ -107,14 +140,29 @@ pack::build() {
 		fi
 	fi
 
+	# Content hash of the staged tree -> build_id in the manifest. The runtime
+	# keys its cache on it, so rebuilding with the same name-version invalidates
+	# stale extractions. Computed last: it must cover the final payload content.
+	printf 'build_id = %s\n' "$(pack::_tree_id "$stage")" >> "$stage/manifest"
+
 	# Compress with xz; fall back to gzip when xz is unavailable or forced.
 	local taropt="J"
 	if [[ "$comp" == gzip ]] || ! command -v xz >/dev/null 2>&1; then
 		[[ "$comp" != gzip ]] && ui::warn "xz not found; using gzip"
 		taropt="z"
 	fi
+	# Reproducible archive on GNU tar: fixed member order, owner and mtime, so the
+	# same input tree yields a bit-identical .bs (override the epoch with
+	# SOURCE_DATE_EPOCH). The original couldn't even produce the same MD5 twice.
+	local -a tarflags=()
+	if tar --version 2>/dev/null | grep -q GNU; then
+		tarflags=(--sort=name --owner=0 --group=0 --numeric-owner
+		          --mtime="@${SOURCE_DATE_EPOCH:-0}")
+	else
+		ui::warn "non-GNU tar: build will work but won't be byte-reproducible"
+	fi
 	# Members at the archive root (no ./ prefix), so the runtime reads them by name.
-	( cd "$stage" && tar -c"$taropt"f "$payload" -- * )
+	( cd "$stage" && tar "${tarflags[@]}" -c"$taropt"f "$payload" -- * )
 
 	cat "$BS_ROOT/template/stub.sh" "$payload" > "$out"
 	chmod +x "$out"
