@@ -3,7 +3,7 @@
 # the subcommand dispatcher. No logic is duplicated across modules.
 
 BS_NAME="installer-bs"
-BS_VERSION="0.2.0"
+BS_VERSION="0.3.0"
 readonly BS_NAME BS_VERSION
 
 # core::detect_platform
@@ -58,24 +58,44 @@ core::dispatch() {
 	fi
 
 	case "${cmd:-help}" in
-		help)    core::cmd_help ;;
-		version) core::cmd_version ;;
-		build)   pack::build "${rest[@]}" ;;
-		make)    recipe::run "${rest[@]}" ;;
-		sign)    sign::sign "${rest[@]}" ;;
-		verify)  sign::verify "${rest[@]}" ;;
-		info)    core::cmd_info "${rest[@]}" ;;
-		*)       ui::error "$(i18n::t err_unknown_command "$cmd")"; return 2 ;;
+		help)      core::cmd_help ;;
+		version)   core::cmd_version ;;
+		build)     pack::build "${rest[@]}" ;;
+		make)      recipe::run "${rest[@]}" ;;
+		sign)      sign::sign "${rest[@]}" ;;
+		verify)    sign::verify "${rest[@]}" ;;
+		info)      core::cmd_info "${rest[@]}" ;;
+		run)       core::cmd_run "${rest[@]}" ;;
+		list)      installed::list "${rest[@]}" ;;
+		uninstall) installed::uninstall "${rest[@]}" ;;
+		cache)     installed::cache "${rest[@]}" ;;
+		*)         ui::error "$(i18n::t err_unknown_command "$cmd")"; return 2 ;;
 	esac
 }
 
-# core::cmd_info PKG
-# Show a .bs package's metadata by delegating to its self-contained runtime.
+# core::cmd_info PKG-or-NAME
+# A package file delegates to its self-contained runtime; otherwise the
+# argument is looked up as an installed package name.
 core::cmd_info() {
 	local pkg="${1:-}"
 	[[ -n "$pkg" ]] || { ui::error "$(i18n::t err_info_usage)"; return 2; }
+	if [[ -f "$pkg" ]]; then
+		bash "$pkg" --info
+		return
+	fi
+	installed::info_name "$pkg" && return 0
+	ui::error "$(i18n::t err_not_found "$pkg")"
+	return 1
+}
+
+# core::cmd_run PKG [args...]
+# Front-end over executing the package directly; the .bs stays self-sufficient.
+core::cmd_run() {
+	local pkg="${1:-}"
+	[[ -n "$pkg" ]] || { ui::error "$(i18n::t err_run_usage)"; return 2; }
 	[[ -f "$pkg" ]] || { ui::error "$(i18n::t err_not_found "$pkg")"; return 1; }
-	bash "$pkg" --info
+	shift
+	exec bash -- "$pkg" "$@"
 }
 
 core::cmd_version() {
@@ -91,13 +111,17 @@ $(i18n::t app_tagline)
 $(i18n::t help_usage)
 
 $(i18n::t help_commands)
-  build    $(i18n::t help_build)
-  make     $(i18n::t help_make)
-  sign     $(i18n::t help_sign)
-  verify   $(i18n::t help_verify)
-  info     $(i18n::t help_info)
-  version  $(i18n::t help_version)
-  help     $(i18n::t help_help)
+  build      $(i18n::t help_build)
+  make       $(i18n::t help_make)
+  run        $(i18n::t help_run)
+  list       $(i18n::t help_list)
+  uninstall  $(i18n::t help_uninstall)
+  cache      $(i18n::t help_cache)
+  sign       $(i18n::t help_sign)
+  verify     $(i18n::t help_verify)
+  info       $(i18n::t help_info)
+  version    $(i18n::t help_version)
+  help       $(i18n::t help_help)
 
 $(i18n::t help_options)
   -y, --yes        $(i18n::t help_opt_yes)
