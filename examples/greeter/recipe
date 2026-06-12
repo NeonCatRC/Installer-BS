@@ -33,4 +33,19 @@ prepare() {
 	# LD_LIBRARY_PATH (pointing at the bundled copy) takes over.
 	"$cc" -O2 -o "$pkgdir/bin/greeter" "$RECIPE_DIR/src/main.c" \
 		-I"$RECIPE_DIR/src" -L"$libdir" -lgreet -Wl,-rpath,"$libdir" || return 1
+
+	# A man page: anything under share/man/man<N>/ is auto-linked into the
+	# man path at --install (and removed cleanly on uninstall).
+	mkdir -p "$pkgdir/share/man/man1"
+	cat > "$pkgdir/share/man/man1/greeter.1" <<'MAN'
+.TH GREETER 1 "" "greeter 1.0.0"
+.SH NAME
+greeter \- demo binary with a bundled shared library
+.SH SYNOPSIS
+.B greeter
+.SH DESCRIPTION
+Prints a greeting produced by libgreet.so, which travels inside the package.
+The library exists nowhere else on the system; if you can read this page via
+man(1), the install-time integration worked too.
+MAN
 }

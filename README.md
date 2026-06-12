@@ -138,8 +138,10 @@ sudo ./hello-1.0.0-x86_64.bs --install --system   # системно (/opt, /usr
 ```
 
 Рецепт — обычный bash-файл (как PKGBUILD): объявляет метаданные и `prepare()`. Источник может быть
-AppImage, tar или локальный файл; `bundle_libs = true` доберёт `.so` через `ldd` (см. пример
-[`examples/greeter`](examples/greeter) — бинарь с собственной библиотекой).
+AppImage, tar, zip, **deb** (читается обычным `ar`, без dpkg — [`examples/ripgrep`](examples/ripgrep))
+или локальный файл; несколько источников разом — массив `sources=()` ([`examples/fzf`](examples/fzf):
+бинарь + man-страницы + completion + второй лаунчер через `extra_exec`). `bundle_libs = true`
+доберёт `.so` через `ldd` (см. [`examples/greeter`](examples/greeter) — бинарь с собственной библиотекой).
 
 Сложный путь — собрать Krita **из исходников** и завернуть Qt/KF вручную (`ldd` + Qt-плагины):
 [`examples/krita-src`](examples/krita-src). Проверено в чистом контейнере — пакет несёт весь

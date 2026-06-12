@@ -1,0 +1,32 @@
+# Installer-BS recipe: repackage an upstream .deb into a .bs — no dpkg involved.
+# A .deb is just an `ar` archive with data.tar.* inside; binutils ar (or bsdtar)
+# reads it. Run on Linux x86_64:   ./bs make examples/ripgrep/recipe
+#
+# Showcases the v0.3 integration: the man page is auto-linked into the man path
+# at --install, the bash completion is wired via bash_completion, and the pinned
+# sha256 feeds the download cache — a repeated `bs make` works offline.
+
+name=ripgrep
+pretty_name=ripgrep
+version=15.1.0
+arch=x86_64
+os=linux
+exec=bin/rg
+comment="Recursively search directories for a regex pattern"
+categories="Utility;ConsoleOnly;"
+terminal=true
+bash_completion=share/bash-completion/completions/rg
+
+# Upstream artifact, pinned. Bumping `version` without re-pinning fails loudly
+# on the checksum — that is the point.
+deb_sha256=62ce186675c71edbc7c48a67dc36f986974551354d6ce63726adc2d85aad802c
+
+prepare() {
+	local deb="$srcdir/ripgrep.deb"
+	bs_fetch "https://github.com/BurntSushi/ripgrep/releases/download/${version}/ripgrep_${version}-1_amd64.deb" \
+		"$deb" "$deb_sha256" || return 1
+	bs_deb_extract "$deb" "$srcdir/deb" || return 1
+	# Flatten usr/ into the package layout (bin/, share/): share/man/man1/rg.1.gz
+	# is then auto-linked at --install, and exec is a tidy bin/rg.
+	cp -a "$srcdir/deb/usr/." "$pkgdir/" || return 1
+}

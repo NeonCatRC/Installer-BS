@@ -5,6 +5,7 @@
 # Usage (download the AppImage with your browser first, then):
 #   APP_FILE=~/krita-4.2.9-x86_64.appimage APP_NAME=krita-old APP_VERSION=4.2.9 \
 #     APP_PRETTY="Krita (4.2.9)" APP_CATEGORIES="Graphics;2DGraphics;" \
+#     APP_MIME="application/x-krita;" \
 #     ./bs make examples/appimage/recipe
 #
 # NB: the env vars are APP_* — NOT BS_*, which collide with bs's own readonly
@@ -18,6 +19,7 @@ exec=bs-run
 pretty_name="${APP_PRETTY:-$name}"
 comment="${APP_COMMENT:-Repacked AppImage}"
 categories="${APP_CATEGORIES:-Utility;}"
+mime_types="${APP_MIME:-}"       # optional MimeType= for the .desktop
 terminal=false
 bundle_libs=false
 min_glibc="${APP_MIN_GLIBC:-}"   # optional override; bs build auto-detects from the ELFs otherwise
@@ -43,4 +45,12 @@ fi
 exec "$root/AppRun" "$@"
 WRAP
 	chmod +x "$pkgdir/bs-run"
+
+	# Auto-pick an icon: prefer a hicolor 256x256 from the AppImage's own theme
+	# tree (the size is known from the dir name); fall back to a root-level png
+	# (AppImage convention; size unknown, registered as 256 — fine for menus).
+	local ic
+	ic="$(find "$pkgdir/usr/share/icons" -path '*hicolor/256x256/apps/*.png' 2>/dev/null | head -1 || true)"
+	[[ -n "$ic" ]] || ic="$(compgen -G "$pkgdir/*.png" 2>/dev/null | head -1 || true)"
+	[[ -n "$ic" ]] && { icon="${ic#"$pkgdir/"}"; icon_size=256; }
 }

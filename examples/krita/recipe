@@ -38,4 +38,12 @@ prepare() {
 	fi
 
 	bs_appimage_extract "$img" "$pkgdir" || return 1
+
+	# Desktop integration: take the AppImage's own hicolor icon (size known from
+	# the theme dir, no guessing) and declare Krita's MIME types — --install then
+	# lands a themed icon and a file association, not just a menu entry.
+	local ic
+	ic="$(find "$pkgdir/usr/share/icons" -path '*hicolor/256x256/apps/*.png' 2>/dev/null | head -1 || true)"
+	[[ -n "$ic" ]] && { icon="${ic#"$pkgdir/"}"; icon_size=256; }
+	mime_types="application/x-krita;image/openraster;"
 }

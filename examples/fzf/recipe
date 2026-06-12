@@ -1,0 +1,46 @@
+# Installer-BS recipe: one package assembled from SEVERAL upstream files — the
+# release tarball (binary) plus the fzf-tmux wrapper, both man pages and the
+# bash completion, fetched straight from the tagged source tree.
+# Run on Linux x86_64:   ./bs make examples/fzf/recipe
+#
+# Showcases v0.3: sources=()/sha256s=() with bs_fetch_all (multi-source fetch),
+# extra_exec (a second launcher: fzf-tmux), auto man-link and bash_completion.
+# Every source is pinned; checksummed downloads are cached, so a repeated
+# `bs make` works offline.
+
+name=fzf
+pretty_name=fzf
+version=0.73.1
+arch=x86_64
+os=linux
+exec=bin/fzf
+extra_exec=bin/fzf-tmux
+comment="Command-line fuzzy finder"
+categories="Utility;ConsoleOnly;"
+terminal=true
+bash_completion=share/completions/fzf.bash
+
+sources=(
+	"https://github.com/junegunn/fzf/releases/download/v${version}/fzf-${version}-linux_amd64.tar.gz"
+	"https://raw.githubusercontent.com/junegunn/fzf/v${version}/bin/fzf-tmux"
+	"https://raw.githubusercontent.com/junegunn/fzf/v${version}/man/man1/fzf.1"
+	"https://raw.githubusercontent.com/junegunn/fzf/v${version}/man/man1/fzf-tmux.1"
+	"https://raw.githubusercontent.com/junegunn/fzf/v${version}/shell/completion.bash"
+)
+sha256s=(
+	f3252c2c366bc1700d3c85781ec8c9695998927ac127870eb049ceea2d540f8a
+	ea14943d739fc81952d5071a642591df25ed8dac166040a6d6036b3be197cecd
+	78e69a7c384d5222cea8d93df7e91b5c225d51c913c44539beb895e799b38000
+	9164648bb5c7b0c2e81bdffe9c5b0c4dd1997b4f3d08a4c9d94cfc81fc9de7bf
+	263f7c4e602c002747175c69efa507bd3fb663633bb2419efda2e7641ffb6912
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	mkdir -p "$pkgdir/bin" "$pkgdir/share/man/man1" "$pkgdir/share/completions"
+	tar -xzf "$srcdir/fzf-${version}-linux_amd64.tar.gz" -C "$pkgdir/bin" || return 1
+	cp -- "$srcdir/fzf-tmux"        "$pkgdir/bin/fzf-tmux"
+	cp -- "$srcdir/fzf.1"           "$pkgdir/share/man/man1/fzf.1"
+	cp -- "$srcdir/fzf-tmux.1"      "$pkgdir/share/man/man1/fzf-tmux.1"
+	cp -- "$srcdir/completion.bash" "$pkgdir/share/completions/fzf.bash"
+}

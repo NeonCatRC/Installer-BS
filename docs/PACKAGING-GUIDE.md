@@ -116,8 +116,11 @@ source_sha256=<hash>      # пусто → скачается без прове�
 ./bs make examples/krita/recipe       # реальный пример: офиц. AppImage Krita + проверка KDE sha256
 ```
 
-Реальный пример с проверкой целостности по опубликованному upstream-хешу —
-[`examples/krita/recipe`](../examples/krita/recipe).
+Реальные примеры:
+- [`examples/krita`](../examples/krita) — офиц. AppImage + проверка по опубликованному KDE sha256, иконка из hicolor-дерева, MIME;
+- [`examples/ripgrep`](../examples/ripgrep) — upstream `.deb` без dpkg: распаковка `ar`-ом, man и bash-completion подключаются при `--install`;
+- [`examples/fzf`](../examples/fzf) — мульти-источники (`sources=()` + `bs_fetch_all`): бинарь из tar.gz, man-страницы и completion из тегнутого дерева, второй лаунчер `fzf-tmux` через `extra_exec`;
+- [`examples/appimage`](../examples/appimage) — обёртка над любым локальным AppImage (офлайн).
 
 ---
 

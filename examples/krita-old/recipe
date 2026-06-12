@@ -49,4 +49,10 @@ fi
 exec "$root/AppRun" "$@"
 WRAP
 	chmod +x "$pkgdir/bs-run"
+
+	# Same desktop integration as examples/krita: themed icon + MIME types.
+	local ic
+	ic="$(find "$pkgdir/usr/share/icons" -path '*hicolor/256x256/apps/*.png' 2>/dev/null | head -1 || true)"
+	[[ -n "$ic" ]] && { icon="${ic#"$pkgdir/"}"; icon_size=256; }
+	mime_types="application/x-krita;image/openraster;"
 }
