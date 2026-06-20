@@ -1,0 +1,60 @@
+# Installer-BS recipe: wrap the OFFICIAL prebuilt Xonotic release into one .bs.
+# The game already ships as a ready-to-run, multi-platform zip — no compilation,
+# no dependency hunting. We verify the upstream archive, repack it into a single
+# signed, reproducible .bs and wire the SDL client plus a dedicated-server
+# launcher. Run on Linux x86_64:   ./bs make examples/xonotic/recipe
+#
+# Why this exists (the "ответка"): the original Installer-SH "Xonotic" package
+# bundled the game PLUS the NetRadiant level editor compiled from source PLUS the
+# engine source tree into one ~1.26 GB blob, guarded by an MD5 "integrity" string,
+# and was re-released twice (a hardcoded-version "typo" and a missing settings
+# variable). The game never needed compiling: upstream ships prebuilt binaries for
+# every platform in the very zip fetched below. One declarative recipe replaces a
+# hand-edited 2000-line installer.sh — and nothing foreign is vendored into git.
+
+name=xonotic
+pretty_name=Xonotic
+version=0.8.6
+arch=x86_64
+os=linux
+exec=xonotic-linux-sdl.sh
+extra_exec=xonotic-linux-dedicated.sh
+comment="Fast-paced open-source arena first-person shooter"
+categories="Game;ActionGame;Shooter;"
+terminal=false
+icon=misc/logos/icons_png/xonotic_256.png
+icon_size=256
+
+# The engine binaries need glibc >= 2.29 (objdump -T on xonotic-linux64-dedicated).
+# That is precisely the "compatibility floor at Debian 11, Debian 10 dies on GLIBC"
+# the original author hit by hand — here the runtime guard states it up front, and
+# BS_NO_GLIBC_CHECK=1 can override it.
+min_glibc=2.29
+
+# Upstream artifact, pinned by sha256. The download is additionally cross-checked
+# (during the build) against the SHA-512 published at
+#   https://dl.xonotic.org/xonotic-0.8.6.sha512
+# Bumping `version` without re-pinning fails loudly on the checksum — the point.
+sources=(
+	"https://dl.xonotic.org/xonotic-${version}.zip"
+)
+sha256s=(
+	50850f8d800e7499722f6ea61e478e96464a375494b5a24da93aa0598cbe964d
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	bs_zip_extract "$srcdir/xonotic-${version}.zip" "$srcdir/x" || return 1
+	# The zip holds a single top-level Xonotic/ directory; flatten it into the
+	# package so exec=xonotic-linux-sdl.sh sits at the package root next to data/.
+	cp -a "$srcdir/x/Xonotic/." "$pkgdir/" || return 1
+	chmod +x "$pkgdir"/xonotic-linux*.sh "$pkgdir"/xonotic-linux64-* 2>/dev/null || true
+}
+
+# Dependency note (honest, and the counter-point to "bundle everything, runs
+# everywhere"): the dedicated server links only base libraries, so it runs on any
+# modern distro as-is. The SDL client additionally needs system libSDL2 and — at
+# run time — the host's OpenGL driver (libGL). libSDL2 could be bundled into lib/;
+# the GPU driver cannot — it must come from the host. That is exactly why a 3D app
+# can never be made truly "runs anywhere" by bundling alone, and why the original
+# author's NetRadiant died on Fedora over a missing GL-adjacent library (libGLU).
