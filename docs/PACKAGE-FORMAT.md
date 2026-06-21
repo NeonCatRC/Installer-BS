@@ -80,7 +80,7 @@ Parsing rules:
 |-----------|-------------|------------------------------------------|
 | `name`    | `hello`     | package id, `^[a-z0-9][a-z0-9._-]*$`     |
 | `version` | `1.0.0`     | application version                      |
-| `arch`    | `x86_64`    | target architecture (`uname -m` style)  |
+| `arch`    | `x86_64`    | target architecture (`uname -m` style); `any` = arch-independent payload (pure scripts, no ELF) |
 | `os`      | `linux`     | target OS (`linux`; `freebsd` reserved) |
 | `exec`    | `bin/hello` | main executable path inside the payload |
 
@@ -130,6 +130,8 @@ into `<appdir>/home` so configs stay with the app.
 Before running or installing, the package compares its `os`/`arch` to the host
 (same normalization as the builder) and refuses a foreign platform with a clear
 message instead of the kernel's `Exec format error`. Bypass: `BS_NO_ARCH_CHECK=1`.
+An `arch=any` package (a pure-script payload with no ELF — e.g. the GUI launcher)
+skips the architecture comparison; the `os` field still applies.
 
 ### Install destinations
 

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# Installer-BS — a small, honest GUI front-end for the `bs` CLI.
+#
+# This is the deliberate counter-exhibit to the original's "hostile terminal"
+# (Museum hall 6: forced window resize, read-pause after every step, Terminal=true).
+# Here the GUI is OPTIONAL sugar over a fully scriptable CLI: it shells out to the
+# bundled `bs`, shows what it's doing, and never touches your terminal geometry.
+#
+# Backend: the host's `zenity` (GTK), nothing bundled — drawing a list box does not
+# justify shipping 80 MB of GTK. No display or no zenity? We say so plainly and hand
+# you the same `bs` CLI. That is a guard, not a second UI.
+set -uo pipefail
+
+APP="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+BS="$APP/bs-runtime/bs"
+TITLE="Installer-BS"
+W=720 H=480
+
+# --- i18n (tiny: ru when $LANG starts with ru, else en) ---------------------
+case "${LANG:-}" in ru*|RU*) L=ru ;; *) L=en ;; esac
+t() { # t KEY
+	case "$L:$1" in
+		ru:menu_installed) echo "Установленные пакеты" ;;
+		ru:menu_open)      echo "Открыть .bs файл…" ;;
+		ru:menu_about)     echo "О программе" ;;
+		ru:menu_quit)      echo "Выход" ;;
+		ru:pick_action)    echo "Что сделать?" ;;
+		ru:run)            echo "Запустить" ;;
+		ru:info)           echo "Информация" ;;
+		ru:uninstall)      echo "Удалить" ;;
+		ru:install)        echo "Установить" ;;
+		ru:verify)         echo "Проверить подпись" ;;
+		ru:back)           echo "Назад" ;;
+		ru:none_installed) echo "Ничего не установлено через Installer-BS." ;;
+		ru:confirm_rm)     echo "Удалить пакет «%s» (%s)? Действие необратимо." ;;
+		ru:no_gui)         echo "Нет дисплея или не установлен zenity. Установите zenity (напр. apt install zenity) или используйте CLI:" ;;
+		ru:col_name)       echo "Имя" ;;
+		ru:col_ver)        echo "Версия" ;;
+		ru:col_scope)      echo "Где" ;;
+		*:menu_installed)  echo "Installed packages" ;;
+		*:menu_open)       echo "Open a .bs file…" ;;
+		*:menu_about)      echo "About" ;;
+		*:menu_quit)       echo "Quit" ;;
+		*:pick_action)     echo "What to do?" ;;
+		*:run)             echo "Run" ;;
+		*:info)            echo "Info" ;;
+		*:uninstall)       echo "Uninstall" ;;
+		*:install)         echo "Install" ;;
+		*:verify)          echo "Verify signature" ;;
+		*:back)            echo "Back" ;;
+		*:none_installed)  echo "Nothing installed via Installer-BS yet." ;;
+		*:confirm_rm)      echo "Remove package \"%s\" (%s)? This cannot be undone." ;;
+		*:no_gui)          echo "No display, or zenity is not installed. Install zenity (e.g. apt install zenity) or use the CLI:" ;;
+		*:col_name)        echo "Name" ;;
+		*:col_ver)         echo "Version" ;;
+		*:col_scope)       echo "Scope" ;;
+		*) echo "$1" ;;
+	esac
+}
+
+zen() { zenity "$@" 2>/dev/null; }
+
+# Run a command and stream its combined output into a scrolling log window, so the
+# user sees exactly what `bs` did (the "optional log output" — honest, not hidden).
+run_log() { # run_log "Window title" cmd args...
+	local title="$1"; shift
+	{ "$@" 2>&1; printf '\n[exit %s]\n' "$?"; } \
+		| zen --text-info --title="$TITLE — $title" --width="$W" --height="$H" --auto-scroll --no-wrap
+}
+
+about() {
+	zen --info --no-wrap --title="$TITLE" --width=520 --text="\
+<b>Installer-BS</b> — GUI поверх <tt>bs</tt>.
+Honest by design: this window is optional; everything here is one <tt>bs</tt> command away.
+We draw with your system's <i>zenity</i> and bundle no GTK — unlike a certain installer,
+we don't move your terminal's furniture either.
+
+<small>$( "$BS" version 2>/dev/null | head -1 )</small>"
+}
+
+# --- installed-packages flow ------------------------------------------------
+installed_flow() {
+	local rows line name ver scope sel act
+	rows=()
+	while IFS= read -r line; do
+		# `bs list` columns: name version scope dir   (no color on a pipe)
+		[[ "$line" =~ ^[[:space:]]*:: ]] && continue   # skip ui::info lines
+		read -r name ver scope _ <<< "$line"
+		[[ "$scope" == user || "$scope" == system ]] || continue
+		rows+=("$name" "$ver" "$scope")
+	done < <("$BS" list 2>/dev/null)
+
+	if ((${#rows[@]} == 0)); then
+		zen --info --title="$TITLE" --text="$(t none_installed)"; return
+	fi
+	sel="$(zen --list --title="$TITLE — $(t menu_installed)" --width="$W" --height="$H" \
+		--print-column=1,3 --separator='|' \
+		--column="$(t col_name)" --column="$(t col_ver)" --column="$(t col_scope)" \
+		"${rows[@]}")" || return
+	[[ -n "$sel" ]] || return
+	name="${sel%%|*}"; scope="${sel##*|}"
+	local sysflag=(); [[ "$scope" == system ]] && sysflag=(--system)
+	local bindir="$HOME/.local/bin"; [[ "$scope" == system ]] && bindir="/usr/local/bin"
+
+	act="$(zen --list --title="$TITLE — $name" --width=420 --height=300 \
+		--column="$(t pick_action)" "$(t run)" "$(t info)" "$(t uninstall)" "$(t back)")" || return
+	case "$act" in
+		"$(t run)")       setsid "$bindir/$name" >/dev/null 2>&1 & ;;
+		"$(t info)")      run_log "$(t info): $name" "$BS" info "$name" ;;
+		"$(t uninstall)")
+			local msg
+			# shellcheck disable=SC2059  # the format string is an i18n template with %s
+			printf -v msg "$(t confirm_rm)" "$name" "$scope"
+			zen --question --title="$TITLE" --text="$msg" || return
+			run_log "$(t uninstall): $name" "$BS" --yes uninstall "$name" "${sysflag[@]}" ;;
+	esac
+}
+
+# --- open-a-.bs-file flow ---------------------------------------------------
+open_flow() {
+	local f act
+	f="$(zen --file-selection --title="$TITLE — $(t menu_open)" \
+		--file-filter="*.bs" --file-filter="*")" || return
+	[[ -n "$f" ]] || return
+	act="$(zen --list --title="$TITLE — $(basename -- "$f")" --width=420 --height=320 \
+		--column="$(t pick_action)" "$(t run)" "$(t install)" "$(t verify)" "$(t info)" "$(t back)")" || return
+	case "$act" in
+		"$(t run)")     setsid bash -- "$f" >/dev/null 2>&1 & ;;
+		"$(t install)") run_log "$(t install)" bash -- "$f" --install ;;
+		"$(t verify)")  run_log "$(t verify)" "$BS" verify "$f" ;;
+		"$(t info)")    run_log "$(t info)" bash -- "$f" --info ;;
+	esac
+}
+
+# --- no-GUI guard (not a second backend, just an honest exit) ----------------
+if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] || ! command -v zenity >/dev/null 2>&1; then
+	printf '%s\n\n' "$(t no_gui)" >&2
+	printf '  %s list | info <name> | uninstall <name>\n' "$BS" >&2
+	printf '  bash <file>.bs [--install|--info|--check]\n\n' >&2
+	exec "$BS" "${@:-list}"
+fi
+
+# --- main menu loop ---------------------------------------------------------
+while true; do
+	choice="$(zen --list --title="$TITLE" --width=460 --height=320 --hide-header \
+		--column=action \
+		"$(t menu_installed)" "$(t menu_open)" "$(t menu_about)" "$(t menu_quit)")" || break
+	case "$choice" in
+		"$(t menu_installed)") installed_flow ;;
+		"$(t menu_open)")      open_flow ;;
+		"$(t menu_about)")     about ;;
+		*) break ;;
+	esac
+done

@@ -1,0 +1,33 @@
+# Installer-BS recipe: the GUI launcher, packaged as a .bs that bundles `bs` itself.
+# Payload = the bs runtime (bs + lib/ + locales/ + template/) plus a small zenity
+# front-end. So a user downloads ONE .bs, runs it, and gets a GUI to manage their
+# installed Installer-BS packages — no repo clone required. Run on Linux:
+#   ./bs make examples/bs-gui/recipe
+#
+# Pure bash → architecture-independent: arch=any (no ELF in the payload, so the
+# runtime arch guard is skipped; the os field still applies). The GUI itself draws
+# with the host's zenity — we bundle the bs runtime, not 80 MB of GTK.
+
+name=installer-bs-gui
+pretty_name=Installer-BS
+version=0.3.0
+arch=any
+os=linux
+exec=installer-bs-gui
+comment="Manage your Installer-BS packages (a friendly front-end for bs)"
+categories="System;Settings;"
+terminal=false
+icon=installer-bs.svg
+
+prepare() {
+	# Bundle the bs runtime the launcher shells out to ($BS is the bs you build with).
+	mkdir -p "$pkgdir/bs-runtime"
+	cp -a "$BS_ROOT/bs"        "$pkgdir/bs-runtime/bs"
+	cp -a "$BS_ROOT/lib"       "$pkgdir/bs-runtime/lib"
+	cp -a "$BS_ROOT/locales"   "$pkgdir/bs-runtime/locales"
+	cp -a "$BS_ROOT/template"  "$pkgdir/bs-runtime/template"
+	# The GUI front-end (the package's exec) and its icon.
+	cp -a "$RECIPE_DIR/app/installer-bs-gui" "$pkgdir/installer-bs-gui"
+	cp -a "$RECIPE_DIR/app/installer-bs.svg" "$pkgdir/installer-bs.svg"
+	chmod +x "$pkgdir/installer-bs-gui" "$pkgdir/bs-runtime/bs"
+}

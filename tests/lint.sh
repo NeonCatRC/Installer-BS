@@ -21,6 +21,7 @@ files=(
 	template/stub.sh
 	tests/lint.sh tests/e2e.sh
 	examples/hello/bin/hello
+	examples/bs-gui/app/installer-bs-gui
 )
 
 rc=0

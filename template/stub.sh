@@ -112,7 +112,9 @@ _bs_assert_platform() {
 		aarch64|arm64) arch=aarch64 ;;
 		armv7l|armv6l) arch=armhf ;;
 	esac
-	[[ "$os" == "${MF[os]}" && "$arch" == "${MF[arch]}" ]] && return 0
+	# arch=any marks an architecture-independent payload (pure scripts, no ELF) —
+	# e.g. the GUI launcher. The os field is still honoured.
+	[[ "$os" == "${MF[os]}" && ( "${MF[arch]}" == any || "$arch" == "${MF[arch]}" ) ]] && return 0
 	printf 'bs: this package is built for %s/%s, but this machine is %s/%s\n' "${MF[os]}" "${MF[arch]}" "$os" "$arch" >&2
 	printf '    get a build for your platform, or set BS_NO_ARCH_CHECK=1 to try anyway\n' >&2
 	printf '    (the original shipped 8 binaries per package and guessed; we just tell you)\n' >&2
