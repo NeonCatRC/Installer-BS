@@ -30,7 +30,7 @@ bundle_libs=false      # we bundle manually below (exec is a wrapper, not the EL
 
 prepare() {
 	local src=/krita-pkg/usr
-	[[ -d "$src" ]] || { ui::error "no /krita-pkg — build Krita first (dist/krita-build.Dockerfile)"; return 1; }
+	[[ -d "$src" ]] || { ui::error "no /krita-pkg — build Krita first (examples/krita-src/build-env.Dockerfile)"; return 1; }
 
 	# 1. The installed tree (binary, krita's own libs + kritaplugins, share/).
 	cp -a "$src" "$pkgdir/usr"

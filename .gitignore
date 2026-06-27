@@ -12,3 +12,7 @@
 *~
 .DS_Store
 Thumbs.db
+/article-draft-installer-sh.md
+
+# Agent-local settings (a shared .claude/settings.json may be committed; local overrides are not)
+.claude/settings.local.json

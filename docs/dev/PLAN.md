@@ -94,6 +94,8 @@ Installer-BS/
 │   └── hello/                # минимальный рабочий пример (build->run->install)
 │       ├── manifest
 │       └── bin/hello
+├── apps/
+│   └── installer-bs-gui/     # GUI «Installer-BS Manager» (промоут из examples; релиз bs-gui-X.Y)
 ├── docs/
 │   ├── PACKAGE-FORMAT.md      # спецификация формата .bs и манифеста
 │   ├── ARCHITECTURE.md        # как устроен раннтайм и сборщик
@@ -102,8 +104,8 @@ Installer-BS/
 │   └── dev/                   # планы для агентов (этот каталог)
 │       ├── PLAN.md
 │       ├── GUIDELINES.md
-│       ├── PACKAGE-FORMAT.md  # черновик спеки (переезжает в docs/ при готовности)
-│       └── AGENT-TASKS.md
+│       ├── ROADMAP.md         # дорожная карта (фазы 1/2) + запись фазы 0
+│       └── AGENT-TASKS.md     # исторические work packages (WP0–6)
 └── tests/
     ├── lint.sh               # shellcheck по всем .sh
     └── e2e.sh                # сборка примера и прогон жизненного цикла
