@@ -140,6 +140,9 @@ pack::build() {
 		fi
 	fi
 
+	# Declare the on-disk format revision; the runtime refuses anything newer.
+	printf 'format_version = 1\n' >> "$stage/manifest"
+
 	# Content hash of the staged tree -> build_id in the manifest. The runtime
 	# keys its cache on it, so rebuilding with the same name-version invalidates
 	# stale extractions. Computed last: it must cover the final payload content.
@@ -151,18 +154,22 @@ pack::build() {
 		[[ "$comp" != gzip ]] && ui::warn "xz not found; using gzip"
 		taropt="z"
 	fi
-	# Reproducible archive on GNU tar: fixed member order, owner and mtime, so the
-	# same input tree yields a bit-identical .bs (override the epoch with
-	# SOURCE_DATE_EPOCH). The original couldn't even produce the same MD5 twice.
-	local -a tarflags=()
+	# Reproducible archive on GNU tar: a pre-sorted member list, fixed owner and
+	# mtime, so the same input tree yields a bit-identical .bs (override the epoch
+	# with SOURCE_DATE_EPOCH). The manifest is forced FIRST so the runtime reads
+	# metadata after decompressing only the first member (with `tar --occurrence=1`),
+	# not the whole payload. Members sit at the archive root (no ./), read by name.
 	if tar --version 2>/dev/null | grep -q GNU; then
-		tarflags=(--sort=name --owner=0 --group=0 --numeric-owner
-		          --mtime="@${SOURCE_DATE_EPOCH:-0}")
+		local list; list="$(mktemp)"
+		( cd "$stage" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort \
+			| { printf 'manifest\n'; grep -vxF manifest; } ) > "$list"
+		tar --owner=0 --group=0 --numeric-owner --mtime="@${SOURCE_DATE_EPOCH:-0}" \
+			--no-recursion -C "$stage" -c"$taropt"f "$payload" -T "$list"
+		rm -f "$list"
 	else
 		ui::warn "non-GNU tar: build will work but won't be byte-reproducible"
+		( cd "$stage" && tar -c"$taropt"f "$payload" -- * )
 	fi
-	# Members at the archive root (no ./ prefix), so the runtime reads them by name.
-	( cd "$stage" && tar "${tarflags[@]}" -c"$taropt"f "$payload" -- * )
 
 	cat "$BS_ROOT/template/stub.sh" "$payload" > "$out"
 	chmod +x "$out"

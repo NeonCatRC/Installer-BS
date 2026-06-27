@@ -48,7 +48,14 @@ _bs_extract_all() {
 _bs_read_member() {
 	_bs_locate_payload
 	_bs_check_decomp "$_BS_MAGIC"
-	tail -n +"$_BS_START" "$BS_SELF" | _bs_decomp "$_BS_MAGIC" | tar -xO "$1" 2>/dev/null || true
+	# GNU tar can stop after the first matching member (the manifest is packed
+	# first), so metadata reads don't decompress the whole payload. Detected once.
+	if [[ -z "${_BS_TAR_OCC+set}" ]]; then
+		_BS_TAR_OCC=""
+		tar --version 2>/dev/null | grep -q GNU && _BS_TAR_OCC="--occurrence=1"
+	fi
+	# shellcheck disable=SC2086  # _BS_TAR_OCC is empty or a single intentional flag
+	tail -n +"$_BS_START" "$BS_SELF" | _bs_decomp "$_BS_MAGIC" | tar -xO $_BS_TAR_OCC "$1" 2>/dev/null || true
 }
 
 # --- manifest (parsed as DATA; never sourced) -------------------------------
@@ -71,6 +78,13 @@ _bs_load_manifest() {
 	for k in name version arch os exec; do
 		[[ -n "${MF[$k]:-}" ]] || _bs_die "manifest missing required field: $k"
 	done
+	# Refuse a package built for a newer format than this runtime understands.
+	local fv="${MF[format_version]:-1}"
+	[[ "$fv" =~ ^[0-9]+$ ]] || fv=1
+	if [[ -z "${BS_NO_FORMAT_CHECK:-}" ]] && (( fv > 1 )); then
+		_bs_die "this package needs a newer Installer-BS (format_version=$fv; this runtime supports 1)" \
+		        "rebuild it with an older 'bs', or set BS_NO_FORMAT_CHECK=1 to try anyway"
+	fi
 }
 
 _bs_cache_dir() {
@@ -230,6 +244,7 @@ _bs_info() {
 	[[ -n "${MF[mime_types]:-}" ]]  && printf '  mime_types  %s\n' "${MF[mime_types]}"
 	[[ -n "${MF[min_glibc]:-}" ]]   && printf '  min_glibc   %s\n' "${MF[min_glibc]}"
 	[[ -n "${MF[build_id]:-}" ]]    && printf '  build_id    %s\n' "${MF[build_id]:0:12}"
+	printf '  format      %s\n' "${MF[format_version]:-1}"
 	printf '  bundle_libs %s, isolate_home %s\n' "${MF[bundle_libs]:-false}" "${MF[isolate_home]:-false}"
 }
 
@@ -366,8 +381,8 @@ _bs_install() {
 	# Record the paths we created outside the app dir, for a clean --uninstall.
 	printf '%s\n' "${files[@]}" > "$BS_DATADIR/.bs-files"
 
-	command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$BS_APPSDIR" >/dev/null 2>&1 || true
-	command -v gtk-update-icon-cache  >/dev/null 2>&1 && gtk-update-icon-cache -q "$BS_ICONDIR/hicolor" >/dev/null 2>&1 || true
+	if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$BS_APPSDIR" >/dev/null 2>&1 || true; fi
+	if command -v gtk-update-icon-cache  >/dev/null 2>&1; then gtk-update-icon-cache -q "$BS_ICONDIR/hicolor" >/dev/null 2>&1 || true; fi
 
 	printf 'installed %s %s\n' "$name" "${MF[version]}"
 	printf '  app      %s\n' "$BS_DATADIR"
@@ -392,7 +407,7 @@ _bs_uninstall() {
 		while IFS= read -r f; do [[ -z "$f" ]] || rm -f -- "$f"; done < "$BS_DATADIR/.bs-files"
 	fi
 	rm -rf "$BS_DATADIR"
-	command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$BS_APPSDIR" >/dev/null 2>&1 || true
+	if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$BS_APPSDIR" >/dev/null 2>&1 || true; fi
 	printf 'uninstalled %s\n' "$name"
 }
 

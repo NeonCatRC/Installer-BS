@@ -26,5 +26,5 @@ source "$BS_ROOT/lib/installed.sh"
 # shellcheck source=lib/core.sh
 source "$BS_ROOT/lib/core.sh"
 
-i18n::load
+i18n::load "${LANG:-}"
 core::dispatch "$@"

@@ -65,7 +65,7 @@ installed::uninstall() {
 
 	local apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 	[[ "$system" == true ]] && apps=/usr/local/share/applications
-	command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" >/dev/null 2>&1 || true
+	if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$apps" >/dev/null 2>&1 || true; fi
 	ui::ok "$(i18n::t uninstall_done "$name")"
 }
 

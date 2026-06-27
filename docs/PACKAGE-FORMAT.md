@@ -26,10 +26,12 @@ __BS_PAYLOAD__                        # marker: the ONLY whole line equal to thi
 
 ### Reproducibility
 
-On GNU tar, `bs build` fixes the member order (`--sort=name`), owner (0:0) and
-mtimes (`SOURCE_DATE_EPOCH`, default 0), so the same input tree produces a
-**byte-identical** `.bs`. Combined with `build_id` (below) this also means an
-unchanged rebuild keeps its extraction cache warm.
+On GNU tar, `bs build` archives from a pre-sorted member list with the
+**`manifest` first**, fixed owner (0:0) and mtimes (`SOURCE_DATE_EPOCH`, default
+0), so the same input tree produces a **byte-identical** `.bs`. Manifest-first
+lets the runtime read metadata after decompressing only the first member (see
+*Payload contents*). Combined with `build_id` (below) this also keeps an
+unchanged rebuild's extraction cache warm.
 
 ### Compression
 
@@ -46,18 +48,22 @@ is missing, the runtime says so explicitly instead of failing obscurely.
 
 ### Payload contents
 
-Created from the package source directory, members at the archive root:
+Created from the package source directory, members at the archive root, with the
+`manifest` packed **first**:
 
 ```
-manifest          # canonical manifest (source of truth)
+manifest          # canonical manifest (source of truth) — FIRST member
 bin/<exec>        # main executable and friends
 lib/              # bundled .so files (only if bundle_libs = true)
 share/            # icons, assets
 ...               # any application files
 ```
 
-`--info` reads only the `manifest` member (`tar -xO manifest`) without unpacking
-the rest.
+`--info` (and `bs info`, and the GUI's info card) read only the `manifest`
+member. On GNU tar the runtime uses `tar -xO --occurrence=1 manifest`: because
+the manifest is the first member, this decompresses essentially nothing instead
+of streaming the whole payload (matters for multi-hundred-MB packages). Non-GNU
+tar falls back to reading the member without the early stop.
 
 ---
 
@@ -88,7 +94,7 @@ Parsing rules:
 
 | key            | default   | meaning                                            |
 |----------------|-----------|----------------------------------------------------|
-| `format`       | `1`       | package format version                             |
+| `format_version` | `1` (auto) | on-disk format revision, written by `bs build`; the runtime refuses a higher value (`BS_NO_FORMAT_CHECK=1` bypasses) |
 | `pretty_name`  | = `name`  | human name for the menu / `.desktop`               |
 | `comment`      | —         | `Comment=` in the `.desktop`                       |
 | `categories`   | —         | XDG categories, `;`-separated                      |
