@@ -1,0 +1,775 @@
+#!/usr/bin/env bash
+# Installer-BS Manager — a small, honest front-end for the `bs` CLI.
+#
+# Autonomous by design: a pure-bash terminal UI (zero dependencies — runs
+# anywhere bash does: Ubuntu 16.04, BSD, a rescue shell). It is optional sugar
+# over a fully scriptable CLI and never shows nothing: launched by double-click
+# without a terminal, it re-opens itself in one.
+#
+# The deliberate counter to the original's hostile terminal (Museum hall 6).
+# We bundle the `bs` runtime, not a GUI toolkit. All interactive I/O goes
+# through /dev/tty, so menus survive being called inside $(...).
+#
+# The terminal UI has two tiers, picked by capability:
+#   rich  — a self-made "dialog": full-screen frame, arrow-key navigation,
+#           inverse-video selection, scrolling lists, live resize. Display
+#           widths are counted in Unicode code points (UTF-8 decoded by hand),
+#           so Cyrillic labels keep the right border aligned.
+#   plain — the original numbered menu, used when the terminal can't do cursor
+#           addressing (TERM=dumb, no tput, no controlling tty). Never removed:
+#           it is the guaranteed-everywhere fallback.
+set -uo pipefail
+
+SELF="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
+APP="$(cd -- "$(dirname -- "$SELF")" && pwd)"
+BS="$APP/bs-runtime/bs"
+TITLE="Installer-BS Manager"
+VERSION="0.4.0"        # keep in sync with the recipe's version=
+# GNU tar can stop at the first matching member; a v1 .bs packs the manifest
+# first, so reading metadata decompresses ~nothing instead of the whole payload.
+BS_TAR_OCC=""
+tar --version 2>/dev/null | grep -q GNU && BS_TAR_OCC="--occurrence=1"
+
+# --- i18n: strings live in bundled locale files (locale/<lang>.sh); en is the
+#     fallback base, the $LANG language overlays it. Add a language = add a file.
+declare -A GUI_STR
+_bs_loc="$APP/locale"
+# shellcheck source=/dev/null  # locale files are linted standalone (see tests/lint.sh)
+[[ -f "$_bs_loc/en.sh" ]] && source "$_bs_loc/en.sh"
+_bs_lang="${LANG:-}"; _bs_lang="${_bs_lang%%[._]*}"; _bs_lang="${_bs_lang,,}"
+if [[ -n "$_bs_lang" && "$_bs_lang" != en && -f "$_bs_loc/$_bs_lang.sh" ]]; then
+	# shellcheck disable=SC1090
+	source "$_bs_loc/$_bs_lang.sh"
+fi
+unset _bs_loc _bs_lang
+t() { local v="${GUI_STR[$1]:-}"; [[ -n "$v" ]] && printf '%s\n' "$v" || printf '%s\n' "$1"; }
+
+# --- CLI args: behave like a tool when asked; otherwise open the TUI ----------
+case "${1:-}" in
+	-h|--help)
+		printf '%s %s — a terminal front-end for the bs CLI.\n\nUsage: %s [-h|--help] [-V|--version]\n  (no arguments)   open the package manager TUI\n\nManages your Installer-BS (.bs) packages: run, info, install, uninstall,\nverify, sign, build from a recipe, clean caches. Pure bash, zero deps.\n' \
+			"$TITLE" "$VERSION" "$(basename -- "$SELF")"
+		exit 0 ;;
+	-V|--version) printf '%s %s\n' "$TITLE" "$VERSION"; exit 0 ;;
+esac
+
+# --- UI tier selection: rich (full-screen TUI) | plain (numbered fallback) ---
+# rich requires a usable controlling terminal with cursor addressing; otherwise
+# we fall back to the numbered menu. BS_GUI_PLAIN=1 forces the plain tier.
+tui_capable() {
+	[[ "${TERM:-dumb}" != dumb ]]              || return 1
+	command -v tput  >/dev/null 2>&1           || return 1
+	command -v stty  >/dev/null 2>&1           || return 1
+	stty -g </dev/tty >/dev/null 2>&1          || return 1   # controlling tty?
+	tput cup 0 0 >/dev/null 2>&1               || return 1   # cursor addressing?
+	return 0
+}
+
+UI=plain
+if [[ ! -t 0 || ! -t 1 ]]; then
+	# No terminal (double-clicked): re-open in one so we never just vanish.
+	for term in x-terminal-emulator gnome-terminal konsole xfce4-terminal mate-terminal xterm; do
+		command -v "$term" >/dev/null 2>&1 || continue
+		case "$term" in
+			gnome-terminal) exec "$term" -- "$SELF" ;;
+			*)              exec "$term" -e "$SELF" ;;
+		esac
+	done
+	command -v notify-send >/dev/null 2>&1 && notify-send "$TITLE" "Run me from a terminal."
+	command -v xmessage    >/dev/null 2>&1 && xmessage -center "$TITLE: run me from a terminal."
+	exit 1
+else
+	if [[ -z "${BS_GUI_PLAIN:-}" ]] && tui_capable; then UI=rich; else UI=plain; fi
+fi
+
+# --- palette (only on a real terminal, honour NO_COLOR) ----------------------
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+	c_b=$'\e[1m'; c_d=$'\e[2m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_c=$'\e[36m'; c_inv=$'\e[7m'; c_r=$'\e[0m'
+else c_b=''; c_d=''; c_g=''; c_y=''; c_c=''; c_inv=''; c_r=''; fi
+
+# ============================================================================
+# Rich TUI engine
+# ============================================================================
+# Engine state (globals; set by tui_begin / tui_size).
+TUI_ACTIVE=''        # non-empty while the alt-screen / raw mode is held
+TUI_STTY_SAVE=''     # saved `stty -g` to restore on exit
+TUI_ROWS=24; TUI_COLS=80
+TUI_FW=0             # frame width (drawn columns), <=80
+TUI_RULE=''          # cached horizontal rule of length TUI_FW-2
+TUI_RESIZED=''       # set by the SIGWINCH trap, consumed by the key reader
+KEY=''; DW=0; CUT=''; SBG=''   # out-params (avoid forking $() in the draw loop)
+
+# Display width of a UTF-8 string in terminal columns. We count code points by
+# skipping UTF-8 continuation bytes (10xxxxxx); for our content (Latin, Cyrillic,
+# box-drawing, arrows) one code point == one column. Wide CJK and zero-width
+# combining marks are out of scope (an accepted simplification). -> DW
+tui_dwidth() {
+	local LC_ALL=C            # force byte semantics before measuring below
+	local s="$1"; local n=${#s} i=0 w=0 b
+	while (( i < n )); do
+		printf -v b "%d" "'${s:i:1}"; b=$(( b & 0xFF ))
+		(( (b & 0xC0) != 0x80 )) && (( w++ ))
+		(( i++ ))
+	done
+	DW=$w
+}
+
+# Truncate a UTF-8 string to at most MAX columns (code points). -> CUT
+tui_cut() {
+	local LC_ALL=C            # force byte semantics before measuring below
+	local s="$1" max="$2"; local n=${#s} i=0 cps=0 b len out=''
+	while (( i < n && cps < max )); do
+		printf -v b "%d" "'${s:i:1}"; b=$(( b & 0xFF ))
+		len=1
+		if   (( b >= 0xF0 )); then len=4
+		elif (( b >= 0xE0 )); then len=3
+		elif (( b >= 0xC0 )); then len=2; fi
+		out+="${s:i:len}"; (( i += len )); (( cps++ ))
+	done
+	CUT="$out"
+}
+
+# Recompute terminal size and the cached frame rule. One stty fork per redraw.
+tui_size() {
+	local s; s="$(stty size </dev/tty 2>/dev/null)"
+	if [[ "$s" =~ ^([0-9]+)[[:space:]]+([0-9]+)$ ]]; then
+		TUI_ROWS="${BASH_REMATCH[1]}"; TUI_COLS="${BASH_REMATCH[2]}"
+	else TUI_ROWS=24; TUI_COLS=80; fi
+	(( TUI_ROWS >= 8  )) || TUI_ROWS=24
+	(( TUI_COLS >= 24 )) || TUI_COLS=80
+	local fw=$TUI_COLS; (( fw > 80 )) && fw=80
+	if (( fw != TUI_FW )); then
+		TUI_FW=$fw
+		local k=$(( fw - 2 )) r=''
+		while (( k-- > 0 )); do r+='─'; done
+		TUI_RULE="$r"
+	fi
+}
+
+tui_winch() { TUI_RESIZED=1; tui_size; }
+tui_widget_enter() { trap 'tui_winch' WINCH; }
+tui_widget_leave() { trap - WINCH; }
+
+tui_begin() {
+	TUI_STTY_SAVE="$(stty -g </dev/tty 2>/dev/null || true)"
+	TUI_ACTIVE=1
+	trap 'tui_end' EXIT
+	trap 'tui_end; exit 130' INT
+	trap 'tui_end; exit 143' TERM
+	trap 'tui_end; exit 129' HUP
+	[[ -n "${BS_GUI_NOALT:-}" ]] || tput smcup >/dev/tty 2>/dev/null
+	tput civis >/dev/tty 2>/dev/null
+	stty -echo -icanon -ixon min 1 time 0 </dev/tty 2>/dev/null
+	TUI_FW=0; tui_size
+}
+
+tui_end() {
+	[[ -n "${TUI_ACTIVE:-}" ]] || return 0
+	TUI_ACTIVE=''
+	if [[ -n "${TUI_STTY_SAVE:-}" ]]; then stty "$TUI_STTY_SAVE" </dev/tty 2>/dev/null
+	else stty sane </dev/tty 2>/dev/null; fi
+	tput cnorm >/dev/tty 2>/dev/null
+	[[ -n "${BS_GUI_NOALT:-}" ]] || tput rmcup >/dev/tty 2>/dev/null
+}
+
+# Read one key from /dev/tty into KEY. Disambiguates ESC vs arrow/function keys
+# by draining the CSI/SS3 tail with a short timeout. A SIGWINCH while blocked
+# surfaces as KEY=WINCH so the widget redraws. Tokens: UP DOWN LEFT RIGHT ENTER
+# ESC HOME END PGUP PGDN DEL BACKSPACE TAB CHAR:<c> WINCH EOF.
+tui_key() {
+	local c k seq rc oc or
+	KEY=''
+	# Poll with a short timeout so a resize is noticed even when bash restarts
+	# the read after the SIGWINCH trap (we detect it via the trap flag OR a
+	# direct stty-size delta — robust regardless of signal-restart behaviour).
+	while true; do
+		IFS= read -rsn1 -t 0.25 c </dev/tty; rc=$?
+		(( rc == 0 )) && break
+		if (( rc > 128 )); then
+			oc=$TUI_COLS; or=$TUI_ROWS; tui_size
+			if [[ -n "${TUI_RESIZED:-}" ]] || (( TUI_COLS != oc || TUI_ROWS != or )); then
+				TUI_RESIZED=''; KEY=WINCH; return 0
+			fi
+			continue
+		fi
+		KEY=EOF; return 0   # real EOF (controlling terminal closed)
+	done
+	case "$c" in
+		'')           KEY=ENTER ;;
+		$'\r'|$'\n')  KEY=ENTER ;;
+		$'\x7f'|$'\b')KEY=BACKSPACE ;;
+		$'\t')        KEY=TAB ;;
+		$'\e')
+			seq=''
+			while IFS= read -rsn1 -t 0.05 k </dev/tty; do
+				seq+="$k"
+				case "$k" in [A-Za-z~]) break ;; esac
+				(( ${#seq} >= 6 )) && break
+			done
+			case "$seq" in
+				'[A'|'OA') KEY=UP ;;
+				'[B'|'OB') KEY=DOWN ;;
+				'[C'|'OC') KEY=RIGHT ;;
+				'[D'|'OD') KEY=LEFT ;;
+				'[H'|'OH'|'[1~'|'[7~') KEY=HOME ;;
+				'[F'|'OF'|'[4~'|'[8~') KEY=END ;;
+				'[5~') KEY=PGUP ;;
+				'[6~') KEY=PGDN ;;
+				'[3~') KEY=DEL ;;
+				*)     KEY=ESC ;;
+			esac
+			;;
+		*) KEY="CHAR:$c" ;;
+	esac
+	return 0
+}
+
+# --- frame drawing: every helper appends a full TUI_FW-wide line to BUF -------
+tui_top() { BUF+="${c_g}┌${TUI_RULE}┐${c_r}"$'\n'; }
+tui_mid() { BUF+="${c_g}├${TUI_RULE}┤${c_r}"$'\n'; }
+tui_bot() { BUF+="${c_g}└${TUI_RULE}┘${c_r}"$'\n'; }
+
+# tui_line TEXT HILITE RGLYPH — a content row. TEXT is plain (no SGR) so its
+# width is correct; HILITE inverts the inner span; RGLYPH (optional) draws a
+# scrollbar cell in the last column.
+tui_line() {
+	local txt="$1" hi="$2" rg="$3" inner=$(( TUI_FW - 2 )) avail right='' pw pad body
+	avail=$inner
+	if [[ -n "$rg" ]]; then right=" $rg"; avail=$(( inner - 2 )); fi
+	tui_dwidth "$txt"; pw=$DW
+	if (( pw > avail - 1 )); then tui_cut "$txt" $(( avail - 1 )); txt=$CUT; tui_dwidth "$txt"; pw=$DW; fi
+	pad=$(( avail - 1 - pw )); (( pad < 0 )) && pad=0
+	printf -v body ' %s%*s' "$txt" "$pad" ''
+	if (( hi )) && [[ -n "$c_inv" ]]; then
+		BUF+="${c_g}│${c_r}${c_inv}${body}${c_r}${right}${c_g}│${c_r}"$'\n'
+	else
+		BUF+="${c_g}│${c_r}${body}${right}${c_g}│${c_r}"$'\n'
+	fi
+}
+
+# tui_title SUB SCROLL SEL N — brand on the left, "i / N" counter on the right.
+tui_title() {
+	local sub="$1" scroll="$2" sel="$3" n="$4" inner=$(( TUI_FW - 2 )) l r='' lw rw gap gsp
+	l="$TITLE"; [[ -n "$sub" ]] && l="$TITLE · $sub"
+	(( scroll )) && r="$(( sel + 1 )) / $n"
+	tui_dwidth "$l"; lw=$DW
+	if (( lw > inner - 4 )); then tui_cut "$l" $(( inner - 4 )); l=$CUT; tui_dwidth "$l"; lw=$DW; fi
+	tui_dwidth "$r"; rw=$DW
+	gap=$(( inner - 2 - lw - rw )); (( gap < 1 )) && gap=1
+	printf -v gsp '%*s' "$gap" ''
+	BUF+="${c_g}│${c_r} ${c_b}${c_c}${l}${c_r}${gsp}${c_d}${r}${c_r} ${c_g}│${c_r}"$'\n'
+}
+
+# tui_status LEFT RIGHT — dim footer with key hints / version.
+tui_status() {
+	local l="$1" r="$2" inner=$(( TUI_FW - 2 )) lw rw gap gsp
+	tui_dwidth "$l"; lw=$DW
+	if (( lw > inner - 4 )); then tui_cut "$l" $(( inner - 4 )); l=$CUT; tui_dwidth "$l"; lw=$DW; fi
+	tui_dwidth "$r"; rw=$DW
+	gap=$(( inner - 2 - lw - rw )); (( gap < 1 )) && gap=1
+	printf -v gsp '%*s' "$gap" ''
+	BUF+="${c_g}│${c_r} ${c_d}${l}${gsp}${r}${c_r} ${c_g}│${c_r}"$'\n'
+}
+
+# tui_center COLORED PLAINW — center a (possibly colored) span of PLAINW columns.
+tui_center() {
+	local colored="$1" pw="$2" inner=$(( TUI_FW - 2 )) padl padr sl sr
+	padl=$(( (inner - pw) / 2 )); (( padl < 0 )) && padl=0
+	padr=$(( inner - pw - padl )); (( padr < 0 )) && padr=0
+	printf -v sl '%*s' "$padl" ''; printf -v sr '%*s' "$padr" ''
+	BUF+="${c_g}│${c_r}${sl}${colored}${sr}${c_g}│${c_r}"$'\n'
+}
+
+# Scrollbar cell for viewport row I: ▲/▼ at the ends when more rows lie beyond,
+# a ┃ thumb proportional to the offset, │ track elsewhere. -> SBG
+tui_sbglyph() {
+	local i="$1" vh="$2" off="$3" n="$4" denom tpos
+	if (( i == 0    && off > 0      )); then SBG='▲'; return; fi
+	if (( i == vh-1 && off + vh < n )); then SBG='▼'; return; fi
+	denom=$(( n - vh )); (( denom < 1 )) && denom=1
+	tpos=$(( off * (vh - 1) / denom ))
+	if (( i == tpos )); then SBG='┃'; else SBG='│'; fi
+}
+
+# Repaint in place: home, frame with each row cleared to end-of-line (so a
+# shrunk frame leaves no ghosts to its right), then clear everything below.
+tui_paint() { printf '\033[H%s\033[J' "${BUF//$'\n'/$'\033[K'$'\n'}" >/dev/tty; }
+
+# ============================================================================
+# Rich widgets
+# ============================================================================
+
+# tui_menu SUB LABEL... -> echoes the chosen LABEL (rc 0) or returns 1 (back).
+# Press `/` to filter the list incrementally (case-insensitive substring; byte-
+# wise, so Cyrillic queries work too). Esc clears the filter, then exits.
+tui_menu() {
+	local sub="$1"; shift
+	local -a items=("$@") view=()
+	local n=${#items[@]} sel=0 off=0 avail vh vn i idx scroll mk hi glyph q lbl
+	local flt='' fmode=0
+	tui_widget_enter
+	while true; do
+		tui_size
+		view=()
+		if [[ -z "$flt" ]]; then
+			for (( i = 0; i < n; i++ )); do view+=("$i"); done
+		else
+			q="${flt,,}"
+			for (( i = 0; i < n; i++ )); do lbl="${items[$i],,}"; [[ "$lbl" == *"$q"* ]] && view+=("$i"); done
+		fi
+		vn=${#view[@]}
+		avail=$(( TUI_ROWS - 6 )); (( avail < 1 )) && avail=1
+		vh=$avail; (( vh > vn )) && vh=$vn; (( vh < 1 )) && vh=1
+		scroll=0; (( vn > vh )) && scroll=1
+		(( sel < 0 ))   && sel=$(( vn - 1 ))
+		(( sel >= vn )) && sel=0
+		(( sel < 0 ))   && sel=0
+		(( sel < off ))       && off=$sel
+		(( sel >= off + vh )) && off=$(( sel - vh + 1 ))
+		(( off > vn - vh )) && off=$(( vn - vh )); (( off < 0 )) && off=0
+		BUF=''
+		tui_top
+		tui_title "$sub" "$scroll" "$sel" "$vn"
+		tui_mid
+		if (( vn == 0 )); then
+			tui_line "$(t no_match)" 0 ''
+		else
+			for (( i = 0; i < vh; i++ )); do
+				idx=${view[$(( off + i ))]}
+				if (( off + i == sel )); then mk='▸ '; hi=1; else mk='  '; hi=0; fi
+				if (( scroll )); then tui_sbglyph "$i" "$vh" "$off" "$vn"; glyph=$SBG; else glyph=''; fi
+				tui_line "${mk}${items[$idx]}" "$hi" "$glyph"
+			done
+		fi
+		tui_mid
+		if (( fmode )); then tui_status "/$flt" "$(t hint_filter)"
+		else tui_status "$(t hint_menu)" "v$VERSION"; fi
+		tui_bot
+		tui_paint
+		tui_key
+		case "$KEY" in
+			UP)    (( sel-- )) || true ;;
+			DOWN)  (( sel++ )) || true ;;
+			HOME)  sel=0 ;;
+			END)   sel=$(( vn - 1 )) ;;
+			PGUP)  (( sel -= vh )); (( sel < 0 )) && sel=0 ;;
+			PGDN)  (( sel += vh )); (( sel >= vn )) && sel=$(( vn - 1 )) ;;
+			ENTER) (( vn == 0 )) && continue; tui_widget_leave; printf '%s\n' "${items[${view[$sel]}]}"; return 0 ;;
+			BACKSPACE) if (( fmode )); then flt="${flt%?}"; sel=0; off=0; [[ -z "$flt" ]] && fmode=0; fi ;;
+			ESC)   if (( fmode )); then fmode=0; flt=''; sel=0; off=0; else tui_widget_leave; return 1; fi ;;
+			CHAR:/) if (( fmode )); then flt+='/'; sel=0; off=0; else fmode=1; sel=0; off=0; fi ;;
+			CHAR:q|CHAR:Q) if (( fmode )); then flt+="${KEY#CHAR:}"; sel=0; off=0; else tui_widget_leave; return 1; fi ;;
+			CHAR:*) if (( fmode )); then flt+="${KEY#CHAR:}"; sel=0; off=0; fi ;;
+			EOF)   tui_widget_leave; return 1 ;;
+			*) : ;;
+		esac
+	done
+}
+
+# tui_confirm MESSAGE -> exit status (default = No).
+tui_confirm() {
+	local msg="$1" sel=1 inner ln y no yp np yc nc plain colored pw
+	tui_widget_enter
+	local -a lines=()
+	while true; do
+		tui_size
+		inner=$(( TUI_FW - 2 ))
+		mapfile -t lines < <(printf '%s\n' "$msg" | fold -s -w $(( inner - 4 )))
+		y="$(t yes)"; no="$(t no)"
+		if (( sel == 0 )); then yp="[»$y«]"; np="[ $no ]"; else yp="[ $y ]"; np="[»$no«]"; fi
+		if [[ -n "$c_inv" ]]; then
+			if (( sel == 0 )); then yc="${c_b}${c_inv}${yp}${c_r}"; nc="${c_d}${np}${c_r}"
+			else                  yc="${c_d}${yp}${c_r}"; nc="${c_b}${c_inv}${np}${c_r}"; fi
+		else yc="$yp"; nc="$np"; fi
+		plain="$yp  $np"; tui_dwidth "$plain"; pw=$DW
+		colored="$yc  $nc"
+		BUF=''
+		tui_top
+		tui_title "" 0 0 0
+		tui_mid
+		for ln in "${lines[@]}"; do tui_line "$ln" 0 ''; done
+		tui_line "" 0 ''
+		tui_center "$colored" "$pw"
+		tui_mid
+		tui_status "$(t hint_confirm)" ""
+		tui_bot
+		tui_paint
+		tui_key
+		case "$KEY" in
+			LEFT|RIGHT|TAB) sel=$(( sel ^ 1 )) ;;
+			CHAR:y|CHAR:Y)  tui_widget_leave; return 0 ;;
+			CHAR:n|CHAR:N)  tui_widget_leave; return 1 ;;
+			ENTER)          tui_widget_leave; (( sel == 0 )) && return 0; return 1 ;;
+			ESC|CHAR:q|CHAR:Q) tui_widget_leave; return 1 ;;
+			EOF)            tui_widget_leave; return 1 ;;
+			*) : ;;
+		esac
+	done
+}
+
+# tui_message SUB  (prose on stdin) — a notice that wraps; any key continues.
+tui_message() {
+	local sub="$1" body ln inner
+	body="$(cat)"
+	tui_widget_enter
+	local -a lines=()
+	while true; do
+		tui_size
+		inner=$(( TUI_FW - 2 ))
+		mapfile -t lines < <(printf '%s\n' "$body" | fold -s -w $(( inner - 4 )))
+		BUF=''
+		tui_top
+		tui_title "$sub" 0 0 0
+		tui_mid
+		for ln in "${lines[@]}"; do tui_line "$ln" 0 ''; done
+		tui_mid
+		tui_status "$(t enter_cont)…" ""
+		tui_bot
+		tui_paint
+		tui_key
+		case "$KEY" in
+			WINCH) : ;;
+			*) tui_widget_leave; return 0 ;;
+		esac
+	done
+}
+
+# tui_run_log SUB cmd... — leave the frame, run cmd with normal (cooked) tty so
+# its output and cursor behave, show [exit N], pause for a key, then re-arm raw.
+tui_run_log() {
+	local sub="$1"; shift
+	if [[ -n "${TUI_STTY_SAVE:-}" ]]; then stty "$TUI_STTY_SAVE" </dev/tty 2>/dev/null
+	else stty sane </dev/tty 2>/dev/null; fi
+	tput cnorm >/dev/tty 2>/dev/null
+	{ printf '\033[H\033[2J%s┌─ %s%s%s ─────%s\n\n' "$c_g" "$c_b" "$sub" "$c_r$c_g" "$c_r"; } >/dev/tty
+	local ec=0
+	"$@" >/dev/tty 2>&1 || ec=$?
+	{ printf '\n  %s[exit %s]%s   %s%s…%s ' "$c_d" "$ec" "$c_r" "$c_d" "$(t enter_cont)" "$c_r"; } >/dev/tty
+	stty -echo -icanon -ixon min 1 time 0 </dev/tty 2>/dev/null
+	tput civis >/dev/tty 2>/dev/null
+	TUI_RESIZED=''
+	tui_key
+}
+
+# tui_pick_file -> prints a path on stdout (empty = back). Drops to cooked mode
+# for `read -e` path completion, then restores raw.
+# tui_browse START GLOB TITLE -> echoes a chosen file path (rc0) or rc1 (cancel).
+# A directory navigator built on tui_menu (so `/` filters the listing too). Dirs
+# are shown with a trailing "/", ".." goes up; only files matching GLOB are pickable.
+tui_browse() {
+	local dir="$1" glob="$2" title="$3" sel g
+	dir="$(cd -- "$dir" 2>/dev/null && pwd)" || dir="$HOME"
+	while true; do
+		local -a dirs=() files=() sdirs=() sfiles=() entries=()
+		shopt -s nullglob
+		for g in "$dir"/*/; do g="${g%/}"; dirs+=("${g##*/}/"); done
+		for g in "$dir"/$glob; do [[ -f "$g" ]] && files+=("${g##*/}"); done
+		shopt -u nullglob
+		(( ${#dirs[@]}  )) && mapfile -t sdirs  < <(printf '%s\n' "${dirs[@]}"  | LC_ALL=C sort)
+		(( ${#files[@]} )) && mapfile -t sfiles < <(printf '%s\n' "${files[@]}" | LC_ALL=C sort)
+		entries=(".." "${sdirs[@]}" "${sfiles[@]}")
+		sel="$(tui_menu "$title — $dir" "${entries[@]}")" || return 1
+		[[ -n "$sel" ]] || return 1
+		if [[ "$sel" == ".." ]]; then
+			dir="$(cd -- "$dir/.." 2>/dev/null && pwd)" || dir="/"
+		elif [[ "$sel" == */ ]]; then
+			dir="$(cd -- "$dir/${sel%/}" 2>/dev/null && pwd)" || continue
+		else
+			printf '%s\n' "$dir/$sel"; return 0
+		fi
+	done
+}
+
+# tui_pick_file [GLOB] [TITLE] -> a path on stdout (empty = back), via the browser.
+tui_pick_file() { tui_browse "${PWD:-$HOME}" "${1:-*.bs}" "${2:-$(t menu_open)}"; }
+
+# ============================================================================
+# Plain (numbered) widgets — the guaranteed-everywhere fallback
+# ============================================================================
+_cols() { local c=80; command -v tput >/dev/null 2>&1 && c="$(tput cols 2>/dev/null)"; [[ "$c" =~ ^[0-9]+$ ]] && (( c>=24 )) || c=80; (( c>92 )) && c=92; printf '%s' "$c"; }
+_rule() { local n="$1" s=''; while (( n-- > 0 )); do s+='─'; done; printf '%s' "$s"; }
+_header() {
+	local w sub="${1:-}"; w="$(_cols)"
+	{
+		printf '\033[H\033[2J'
+		printf '%s%s%s\n' "$c_g" "$(_rule "$w")" "$c_r"
+		if [[ -n "$sub" ]]; then
+			printf '  %s%s%s %s·%s %s%s%s\n' "$c_b$c_c" "$TITLE" "$c_r" "$c_d" "$c_r" "$c_b" "$sub" "$c_r"
+		else
+			printf '  %s%s%s\n' "$c_b$c_c" "$TITLE" "$c_r"
+		fi
+		printf '%s%s%s\n\n' "$c_g" "$(_rule "$w")" "$c_r"
+	} >/dev/tty
+}
+
+plain_menu() {
+	local sub="$1"; shift
+	local i opt reply
+	while true; do
+		_header "$sub"
+		{ i=1; for opt in "$@"; do printf '    %s▸%s %s%2d%s  %s\n' "$c_g" "$c_r" "$c_b" "$i" "$c_r" "$opt"; i=$((i+1)); done
+		  printf '\n  %s%s [1-%d, %s — назад]:%s ' "$c_d" "$(t choose)" "$#" "Enter" "$c_r"; } >/dev/tty
+		read -r reply </dev/tty || return 1
+		[[ -z "$reply" ]] && return 1
+		[[ "$reply" == q || "$reply" == Q ]] && return 1
+		if [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= 1 && reply <= $# )); then
+			printf '%s\n' "${!reply}"; return 0
+		fi
+	done
+}
+
+plain_confirm() {
+	local reply
+	printf '\n  %s%s%s [y/N] ' "$c_y" "$1" "$c_r" >/dev/tty
+	read -r reply </dev/tty || return 1
+	[[ "$reply" == y || "$reply" == yes || "$reply" == д || "$reply" == да ]]
+}
+
+plain_message() {
+	local body; body="$(cat)"
+	local w; w="$(_cols)"
+	_header "$1"
+	{ printf '%s\n' "$body" | fold -s -w $(( w - 4 )) | sed 's/^/  /'
+	  printf '\n  %s%s…%s ' "$c_d" "$(t enter_cont)" "$c_r"; } >/dev/tty
+	read -r _ </dev/tty || true
+}
+
+plain_run_log() {
+	local sub="$1"; shift
+	local ec
+	_header "$sub"
+	"$@" >/dev/tty 2>&1; ec=$?
+	{ printf '\n  %s[exit %s]%s   %s%s…%s ' "$c_d" "$ec" "$c_r" "$c_d" "$(t enter_cont)" "$c_r"; } >/dev/tty
+	read -r _ </dev/tty || true
+}
+
+plain_pick_file() {
+	local p title="${2:-$(t menu_open)}"   # $1 = glob (ignored in plain), $2 = title
+	_header "$title"
+	printf '  %s%s%s\n  > ' "$c_b" "$(t ask_path)" "$c_r" >/dev/tty
+	read -r -e p </dev/tty || return 1
+	[[ -n "$p" ]] || return 1
+	p="${p/#\~/$HOME}"
+	[[ -f "$p" ]] || { printf '%s\n' "$(t not_found) $p" | ui_message "$title"; return 1; }
+	printf '%s\n' "$p"
+}
+
+# ============================================================================
+# UI primitives: one logic path, two tiers (rich / plain)
+# ============================================================================
+
+# ui_menu SUBTITLE LABEL...  -> prints the chosen LABEL on stdout (empty = back)
+ui_menu() {
+	local sub="$1"; shift
+	if [[ "$UI" == rich ]]; then tui_menu "$sub" "$@"; else plain_menu "$sub" "$@"; fi
+}
+
+# ui_confirm MESSAGE -> exit status
+ui_confirm() {
+	if [[ "$UI" == rich ]]; then tui_confirm "$1"; else plain_confirm "$1"; fi
+}
+
+# ui_message SUBTITLE   (prose on stdin) — a notice that WRAPS
+ui_message() {
+	if [[ "$UI" == rich ]]; then tui_message "$1"; else plain_message "$1"; fi
+}
+
+# ui_run_log SUBTITLE cmd...  -> run cmd, show its combined output
+ui_run_log() {
+	local sub="$1"; shift
+	if [[ "$UI" == rich ]]; then tui_run_log "$sub" "$@"; else plain_run_log "$sub" "$@"; fi
+}
+
+# ui_pick_file [GLOB] [TITLE] -> prints a path on stdout (empty = back)
+ui_pick_file() {
+	if [[ "$UI" == rich ]]; then tui_pick_file "$@"; else plain_pick_file "$@"; fi
+}
+
+# ui_pick_pkg -> prints "name|scope" of a chosen installed package (empty = back)
+ui_pick_pkg() {
+	local -a names=() scopes=() paths=() labels=()
+	local line name ver scope path
+	while IFS= read -r line; do
+		[[ "$line" =~ ^[[:space:]]*:: ]] && continue
+		read -r name ver scope path <<< "$line"
+		[[ "$scope" == user || "$scope" == system ]] || continue
+		names+=("$name"); scopes+=("$scope"); paths+=("$path")
+		labels+=("$(printf '%-22s %-10s (%s)' "$name" "$ver" "$scope")")
+	done < <("$BS" list 2>/dev/null)
+
+	((${#names[@]})) || { printf '%s\n' "$(t none_installed)" | ui_message "$(t menu_installed)"; return 1; }
+
+	local chosen idx; chosen="$(ui_menu "$(t menu_installed)" "${labels[@]}")" || return 1
+	for idx in "${!labels[@]}"; do
+		[[ "${labels[$idx]}" == "$chosen" ]] && { printf '%s|%s|%s\n' "${names[$idx]}" "${scopes[$idx]}" "${paths[$idx]}"; return 0; }
+	done
+	return 1
+}
+
+# --- package info: a friendly, localized card from the manifest -------------
+
+# Stream the embedded manifest (key=value) of a .bs file to stdout. Mirrors the
+# stub's reader: payload offset by marker, decompress by magic, one tar member.
+gui_manifest_file() {
+	local f="$1" start magic; local -a dec
+	start="$(grep -m1 -an '^__BS_PAYLOAD__$' "$f" 2>/dev/null | head -1 | cut -d: -f1)" || return 1
+	[[ -n "$start" ]] || return 1
+	start=$(( start + 1 ))
+	magic="$(tail -n +"$start" "$f" 2>/dev/null | head -c6 | od -An -tx1 | tr -d ' \n')"
+	case "$magic" in
+		fd377a585a00*) dec=(xz -dc) ;;
+		1f8b*)         dec=(gzip -dc) ;;
+		*) return 1 ;;
+	esac
+	# shellcheck disable=SC2086  # BS_TAR_OCC is empty or a single intentional flag
+	tail -n +"$start" "$f" 2>/dev/null | "${dec[@]}" 2>/dev/null | tar -xO $BS_TAR_OCC manifest 2>/dev/null
+}
+
+# Read a key=value manifest on stdin; show a localized, column-aligned
+# "Name / Description / …" card (not raw field keys).
+# gui_render_info SUB [SCOPE-DISPLAY] [EXTRA-PATH] [installed|file]
+gui_render_info() {
+	local sub="$1" scope="${2:-}" xpath="${3:-}" kind="${4:-}" line k v i mw=0
+	local -A M=()
+	local -a labs=() vals=()
+	while IFS= read -r line; do
+		[[ "$line" == *=* ]] || continue
+		[[ "$line" =~ ^[[:space:]]*# ]] && continue
+		k="${line%%=*}"; v="${line#*=}"
+		k="${k//[[:space:]]/}"
+		v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"
+		[[ -n "$k" ]] && M["$k"]="$v"
+	done
+	labs+=("$(t f_name)");    vals+=("${M[pretty_name]:-${M[name]:-—}}")
+	if [[ -n "${M[pretty_name]:-}" && "${M[pretty_name]}" != "${M[name]:-}" ]]; then
+		labs+=("$(t f_id)");  vals+=("${M[name]:-—}")
+	fi
+	labs+=("$(t f_version)"); vals+=("${M[version]:-—}")
+	[[ -n "${M[comment]:-}" ]]    && { labs+=("$(t f_desc)");       vals+=("${M[comment]}"); }
+	labs+=("$(t f_platform)"); vals+=("${M[os]:-?}/${M[arch]:-?}")
+	[[ -n "$scope" ]]             && { labs+=("$(t f_scope)");      vals+=("$scope"); }
+	[[ -n "${M[categories]:-}" ]] && { labs+=("$(t f_categories)"); vals+=("${M[categories]}"); }
+	if [[ "$kind" == installed && -n "$xpath" ]]; then
+		labs+=("$(t f_path)"); vals+=("$xpath")
+		labs+=("$(t f_size)"); vals+=("$(du -sh -- "$xpath" 2>/dev/null | cut -f1)")
+	elif [[ "$kind" == file && -n "$xpath" ]]; then
+		labs+=("$(t f_size)"); vals+=("$(du -h -- "$xpath" 2>/dev/null | cut -f1)")
+	fi
+	[[ -n "${M[format_version]:-}" ]] && { labs+=("$(t f_format)"); vals+=("v${M[format_version]}"); }
+	[[ -n "${M[build_id]:-}" ]]   && { labs+=("$(t f_buildid)");   vals+=("${M[build_id]:0:12}"); }
+	for i in "${!labs[@]}"; do tui_dwidth "${labs[$i]}"; (( DW > mw )) && mw=$DW; done
+	{
+		for i in "${!labs[@]}"; do
+			tui_dwidth "${labs[$i]}"
+			printf '%s%*s : %s\n' "${labs[$i]}" "$(( mw - DW ))" '' "${vals[$i]}"
+		done
+	} | ui_message "$sub"
+}
+
+# Friendly verify: a ✓/✗ headline plus the raw bs-verify detail.
+verify_flow() {
+	local f="$1" out rc=0
+	out="$("$BS" verify "$f" 2>&1)" || rc=$?
+	{ if (( rc == 0 )); then printf '✓ %s\n\n' "$(t verify_ok)"; else printf '✗ %s\n\n' "$(t verify_fail)"; fi
+	  printf '%s\n' "$out"; } | ui_message "$(t verify)"
+}
+
+# --- flows ------------------------------------------------------------------
+# Each action menu loops: an action returns to the SAME package page, not the
+# main menu, so the user need not re-pick the file/package after Info etc.
+installed_flow() {
+	local sel name scope path act bindir
+	while true; do
+		sel="$(ui_pick_pkg)" || return
+		[[ -n "$sel" ]] || return
+		IFS='|' read -r name scope path <<< "$sel"
+		local -a sysflag=(); [[ "$scope" == system ]] && sysflag=(--system)
+		bindir="$HOME/.local/bin"; [[ "$scope" == system ]] && bindir="/usr/local/bin"
+		while true; do
+			act="$(ui_menu "$name ($scope)" "$(t run)" "$(t info)" "$(t uninstall)" "$(t back)")" || break
+			case "$act" in
+				"$(t run)")
+					if [[ -x "$bindir/$name" ]]; then
+						setsid "$bindir/$name" >/dev/null 2>&1 & printf '%s\n' "$(t launched)" | ui_message "$name"
+					else
+						printf '%s %s\n' "$(t run_missing)" "$bindir/$name" | ui_message "$name"
+					fi ;;
+				"$(t info)") gui_render_info "$name" "$(t "scope_$scope")" "$path" installed < "$path/manifest" ;;
+				"$(t uninstall)")
+					if ui_confirm "$(t confirm_rm) \"$name\" ($scope)?"; then
+						ui_run_log "$(t uninstall): $name" "$BS" --yes uninstall "$name" "${sysflag[@]}"
+						break   # package is gone — back to the (refreshed) list
+					fi ;;
+				"$(t back)") break ;;
+			esac
+		done
+	done
+}
+
+open_flow() {
+	local f act base mf nm ver cur
+	f="$(ui_pick_file)" || return
+	[[ -n "$f" ]] || return
+	base="$(basename -- "$f")"
+	while true; do
+		act="$(ui_menu "$base" "$(t run)" "$(t install)" "$(t verify)" "$(t sign)" "$(t info)" "$(t back)")" || break
+		case "$act" in
+			"$(t run)")     setsid bash -- "$f" >/dev/null 2>&1 & printf '%s\n' "$(t launched)" | ui_message "$base" ;;
+			"$(t install)")
+				# Warn on a version change before overwriting an existing install.
+				mf="$(gui_manifest_file "$f")"
+				nm="$(sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*//p'    <<<"$mf" | head -1)"
+				ver="$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' <<<"$mf" | head -1)"
+				cur="$("$BS" list 2>/dev/null | awk -v n="$nm" '$1==n{print $2; exit}')"
+				if [[ -n "$cur" && "$cur" != "$ver" ]]; then
+					ui_confirm "$(t confirm_up) $nm: $cur → $ver?" || continue
+				fi
+				ui_run_log "$(t install)" bash -- "$f" --install ;;
+			"$(t verify)")  verify_flow "$f" ;;
+			"$(t sign)")    ui_run_log "$(t sign)" "$BS" sign "$f" ;;
+			"$(t info)")    gui_manifest_file "$f" | gui_render_info "$base" "" "$f" file ;;
+			"$(t back)")    break ;;
+		esac
+	done
+}
+
+# Build a .bs from a recipe (output lands next to the recipe), with a live log.
+build_flow() {
+	local r
+	r="$(ui_pick_file '*' "$(t menu_build)")" || return
+	[[ -n "$r" ]] || return
+	# shellcheck disable=SC2016  # $1/$2 are the bash -c positionals (passed below), literal on purpose
+	ui_run_log "$(t menu_build): $(basename -- "$r")" \
+		bash -c 'cd -- "$(dirname -- "$1")" && exec "$2" make "$1"' _ "$r" "$BS"
+}
+
+# Show / clean the bs extraction & download caches.
+cache_flow() {
+	local act
+	while true; do
+		act="$(ui_menu "$(t menu_cache)" "$(t cache_show)" "$(t cache_clean)" "$(t back)")" || break
+		case "$act" in
+			"$(t cache_show)")  ui_run_log "$(t menu_cache)" "$BS" cache ;;
+			"$(t cache_clean)") ui_confirm "$(t confirm_clean)" && ui_run_log "$(t cache_clean)" "$BS" --yes cache clean ;;
+			"$(t back)") break ;;
+		esac
+	done
+}
+
+about() { { printf '%s\n\n%s %s\n' "$(t about_text)" "$TITLE" "$VERSION"; } | ui_message "$(t menu_about)"; }
+
+# --- main menu loop ---------------------------------------------------------
+[[ "$UI" == rich ]] && tui_begin
+while true; do
+	choice="$(ui_menu "" "$(t menu_installed)" "$(t menu_open)" "$(t menu_build)" "$(t menu_cache)" "$(t menu_about)" "$(t menu_quit)")" || break
+	case "$choice" in
+		"$(t menu_installed)") installed_flow ;;
+		"$(t menu_open)")      open_flow ;;
+		"$(t menu_build)")     build_flow ;;
+		"$(t menu_cache)")     cache_flow ;;
+		"$(t menu_about)")     about ;;
+		*) break ;;
+	esac
+done
+if [[ "$UI" == rich ]]; then tui_end
+elif [[ "$UI" == plain ]]; then printf '\033[H\033[2J' >/dev/tty 2>/dev/null || true; fi

@@ -1,22 +1,22 @@
-# Installer-BS recipe: the GUI launcher, packaged as a .bs that bundles `bs` itself.
-# Payload = the bs runtime (bs + lib/ + locales/ + template/) plus a small zenity
-# front-end. So a user downloads ONE .bs, runs it, and gets a GUI to manage their
-# installed Installer-BS packages — no repo clone required. Run on Linux:
-#   ./bs make examples/bs-gui/recipe
+# Installer-BS Manager — recipe: the GUI launcher, packaged as a .bs that bundles
+# `bs` itself. Payload = the bs runtime (bs + lib/ + locales/ + template/) plus the
+# pure-bash TUI front-end. A user downloads ONE .bs, runs it, and gets a terminal
+# UI to manage their installed packages — no repo clone required. Run on Linux:
+#   ./bs make apps/installer-bs-gui/recipe
 #
 # Pure bash → architecture-independent: arch=any (no ELF in the payload, so the
-# runtime arch guard is skipped; the os field still applies). The GUI itself draws
-# with the host's zenity — we bundle the bs runtime, not 80 MB of GTK.
+# runtime arch guard is skipped; the os field still applies). The UI is a self-made
+# framed TUI — we bundle the bs runtime, not a GUI toolkit.
 
 name=installer-bs-gui
-pretty_name=Installer-BS
-version=0.3.0
+pretty_name="Installer-BS Manager"
+version=0.4.0
 arch=any
 os=linux
 exec=installer-bs-gui
 comment="Manage your Installer-BS packages (a friendly front-end for bs)"
 categories="System;Settings;"
-terminal=false
+terminal=true
 icon=installer-bs.svg
 
 prepare() {
@@ -26,8 +26,9 @@ prepare() {
 	cp -a "$BS_ROOT/lib"       "$pkgdir/bs-runtime/lib"
 	cp -a "$BS_ROOT/locales"   "$pkgdir/bs-runtime/locales"
 	cp -a "$BS_ROOT/template"  "$pkgdir/bs-runtime/template"
-	# The GUI front-end (the package's exec) and its icon.
+	# The GUI front-end (the package's exec), its icon, and its locale files.
 	cp -a "$RECIPE_DIR/app/installer-bs-gui" "$pkgdir/installer-bs-gui"
 	cp -a "$RECIPE_DIR/app/installer-bs.svg" "$pkgdir/installer-bs.svg"
+	cp -a "$RECIPE_DIR/app/locale"           "$pkgdir/locale"
 	chmod +x "$pkgdir/installer-bs-gui" "$pkgdir/bs-runtime/bs"
 }
