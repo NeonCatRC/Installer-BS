@@ -1,6 +1,7 @@
 # Build output (packages are artifacts, never committed)
 *.bs
 *.sha256
+*.sig
 /build/
 /dist/
 
