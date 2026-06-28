@@ -37,7 +37,12 @@ pack::_detect_glibc() {
 		v="$("${dump[@]}" "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -V | tail -1)"
 		[[ -n "$v" ]] || continue
 		if [[ -z "$max" ]]; then max="$v"; else max="$(printf '%s\n%s\n' "$max" "$v" | sort -V | tail -1)"; fi
-	done < <(find "$dir" -type f \( -path '*/bin/*' -o -path '*/lib/*' -o -name '*.so' -o -name '*.so.*' \) 2>/dev/null)
+	# Scan executables (the main binary, launchers, anything in bin/ or libexec/)
+	# and shared objects, wherever they sit in the tree — a binary in libexec/ or
+	# at the package root must not be missed (it sets the real glibc floor). The
+	# ELF-magic check above filters out scripts; limiting the find to +x files and
+	# *.so keeps it from od-checking every data file in a large payload.
+	done < <(find "$dir" -type f \( -perm -u+x -o -name '*.so' -o -name '*.so.*' \) 2>/dev/null)
 	printf '%s' "$max"
 }
 

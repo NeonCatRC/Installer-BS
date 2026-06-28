@@ -23,11 +23,10 @@ categories="Utility;TextEditor;Development;ConsoleOnly;"
 terminal=true
 bash_completion=share/bash-completion/completions/hx
 
-# Declared explicitly: the `hx` binary needs glibc >= 2.34 (objdump -T on it).
-# We pin it because the real binary lives in libexec/, and the build-time
-# auto-detector only scans bin/, lib/ and *.so files — so it would otherwise see
-# only the runtime grammars (glibc 2.14) and under-report the floor.
-min_glibc=2.34
+# min_glibc is auto-detected from the ELF binaries in the payload at build time:
+# the detector scans executables (including the real `hx` in libexec/) and shared
+# objects, so the floor (the binary's glibc 2.34, above the runtime grammars'
+# 2.14) is recorded and the runtime can warn clearly on a too-old host.
 
 # Upstream artifact, pinned by sha256.
 sources=(
