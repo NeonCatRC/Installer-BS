@@ -1,0 +1,37 @@
+# Installer-BS recipe: wrap the official lazygit release tarball into one .bs.
+# Run on Linux x86_64:   ./bs make examples/lazygit/recipe
+#
+# Why this exists (the anti-blob): lazygit is a single, statically-linked Go
+# binary — no shared libraries, no interpreter, no data files. This is what
+# "zero dependencies" actually looks like, and it is the exact opposite of the
+# original Installer-SH habit of stuffing eight binaries plus a vendored 7-Zip
+# into one package and calling the bundle "portable". Here the payload is one
+# file in bin/; the .bs is that file plus the runtime. Nothing is compiled,
+# nothing foreign lands in git.
+
+name=lazygit
+pretty_name=lazygit
+version=0.62.2
+arch=x86_64
+os=linux
+exec=bin/lazygit
+comment="A terminal UI for git commands"
+categories="Utility;ConsoleOnly;Development;RevisionControl;"
+terminal=true
+
+# Upstream artifact, pinned. This sha256 is also the one published in lazygit's
+# own release checksums.txt — bumping `version` without re-pinning fails loudly.
+sources=(
+	"https://github.com/jesseduffield/lazygit/releases/download/v${version}/lazygit_${version}_linux_x86_64.tar.gz"
+)
+sha256s=(
+	8b9a4c2d0969cbea92b45c956dd2a44e1ba76900c9df49f1c60984045ce77984
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	# The tarball holds lazygit + LICENSE + README at the top level; we want only
+	# the binary, tidy under bin/ (the runtime puts bin/ on PATH when running).
+	mkdir -p "$pkgdir/bin"
+	tar -xzf "$srcdir/lazygit_${version}_linux_x86_64.tar.gz" -C "$pkgdir/bin" lazygit || return 1
+}

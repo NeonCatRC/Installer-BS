@@ -1,0 +1,60 @@
+# Installer-BS recipe: wrap the official Helix release into one .bs, runtime and all.
+# Run on Linux x86_64:   ./bs make examples/helix/recipe
+#
+# Why this exists (data travels beside the binary, not compiled into it): Helix
+# needs a runtime/ tree at run time — tree-sitter grammars, queries, themes (~190
+# MB). Upstream ships it next to the `hx` binary; an editor finds it via the
+# HELIX_RUNTIME env var. We keep exactly that shape: the real binary goes to
+# libexec/, the runtime/ tree ships alongside it, and a tiny launcher (exec=bin/hx)
+# points HELIX_RUNTIME at the copy inside the package before exec'ing hx. The
+# launcher resolves its own location, so it works both portably (from the cache)
+# and after --install (from the install dir) without baking in any absolute path.
+# This is the honest answer to the original's instinct to compile assets into a
+# monolith: the data ships as data, and the package says where it is.
+
+name=helix
+pretty_name=Helix
+version=25.07.1
+arch=x86_64
+os=linux
+exec=bin/hx
+comment="A post-modern modal text editor"
+categories="Utility;TextEditor;Development;ConsoleOnly;"
+terminal=true
+bash_completion=share/bash-completion/completions/hx
+
+# Declared explicitly: the `hx` binary needs glibc >= 2.34 (objdump -T on it).
+# We pin it because the real binary lives in libexec/, and the build-time
+# auto-detector only scans bin/, lib/ and *.so files — so it would otherwise see
+# only the runtime grammars (glibc 2.14) and under-report the floor.
+min_glibc=2.34
+
+# Upstream artifact, pinned by sha256.
+sources=(
+	"https://github.com/helix-editor/helix/releases/download/${version}/helix-${version}-x86_64-linux.tar.xz"
+)
+sha256s=(
+	3f08e63ecd388fff657ad39722f88bb03dcf326f1f2da2700d99e1dc40ab2e8b
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	local top="$srcdir/helix-${version}-x86_64-linux"
+	tar -xJf "$srcdir/helix-${version}-x86_64-linux.tar.xz" -C "$srcdir" || return 1
+
+	mkdir -p "$pkgdir/bin" "$pkgdir/libexec" "$pkgdir/share/bash-completion/completions"
+	cp -- "$top/hx" "$pkgdir/libexec/hx"
+	cp -a "$top/runtime" "$pkgdir/runtime"
+	cp -- "$top/contrib/completion/hx.bash" "$pkgdir/share/bash-completion/completions/hx"
+
+	# Launcher: tell Helix where its runtime/ lives (the copy that ships in this
+	# package), then hand off to the real binary. $0 is an absolute path under the
+	# extraction dir at run time, so "$(dirname $0)/.." is the package root.
+	cat > "$pkgdir/bin/hx" <<'WRAP'
+#!/bin/sh
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export HELIX_RUNTIME="$root/runtime"
+exec "$root/libexec/hx" "$@"
+WRAP
+	chmod +x "$pkgdir/bin/hx"
+}

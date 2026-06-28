@@ -1,0 +1,46 @@
+# Installer-BS recipe: wrap the official Blender release tarball into one .bs.
+# Run on Linux x86_64:   ./bs make examples/blender/recipe
+#
+# Why this exists (upstream already ships the build — you never needed to compile
+# it): Blender's own download is a ready-to-run, prebuilt tarball that carries its
+# private libraries in lib/ and its data tree (scripts, datafiles) beside the
+# binary. A flagship creative app, zero compilation. We repack it verbatim into
+# one signed, reproducible .bs: the runtime puts the bundled lib/ on
+# LD_LIBRARY_PATH automatically, min_glibc is auto-detected so the package warns
+# clearly on a too-old host (the "compatibility floor" the original author hit by
+# hand), the scalable .svg icon and the application/x-blender MIME type wire up at
+# --install.
+#
+# The honest boundary (same point as the Xonotic package): bundling gets you the
+# app's own libraries, but a 3D program still needs the HOST's GPU driver (libGL)
+# and display stack. No packager can ship those — which is exactly why "bundle
+# everything, runs everywhere" was always a half-truth.
+
+name=blender
+pretty_name=Blender
+version=5.1.2
+arch=x86_64
+os=linux
+exec=blender
+comment="Free and open-source 3D creation suite"
+categories="Graphics;3DGraphics;"
+terminal=false
+icon=blender.svg
+mime_types="application/x-blender;"
+
+# Upstream artifact, pinned by sha256. Bumping `version` without re-pinning fails
+# loudly on the checksum — the point.
+sources=(
+	"https://download.blender.org/release/Blender5.1/blender-${version}-linux-x64.tar.xz"
+)
+sha256s=(
+	aaccb355f50183979b698bcce7467103a76261b5fa59f4972295842662a285fb
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	tar -xJf "$srcdir/blender-${version}-linux-x64.tar.xz" -C "$srcdir" || return 1
+	# Flatten the single top-level blender-<ver>-linux-x64/ into the package, so
+	# exec=blender sits at the root next to its lib/ and data tree.
+	cp -a "$srcdir/blender-${version}-linux-x64/." "$pkgdir/" || return 1
+}

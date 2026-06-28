@@ -120,6 +120,12 @@ source_sha256=<hash>      # пусто → скачается без прове�
 - [`examples/krita`](../examples/krita) — офиц. AppImage + проверка по опубликованному KDE sha256, иконка из hicolor-дерева, MIME;
 - [`examples/ripgrep`](../examples/ripgrep) — upstream `.deb` без dpkg: распаковка `ar`-ом, man и bash-completion подключаются при `--install`;
 - [`examples/fzf`](../examples/fzf) — мульти-источники (`sources=()` + `bs_fetch_all`): бинарь из tar.gz, man-страницы и completion из тегнутого дерева, второй лаунчер `fzf-tmux` через `extra_exec`;
+- [`examples/lazygit`](../examples/lazygit) — один статический Go-бинарь, ноль зависимостей (анти-блоб);
+- [`examples/helix`](../examples/helix) — бинарь + его `runtime/` рядом, тонкий лаунчер выставляет `HELIX_RUNTIME` (данные ездят с программой, не вкомпилены);
+- [`examples/godot`](../examples/godot) — весь движок/редактор в одном самодостаточном бинаре;
+- [`examples/vscodium`](../examples/vscodium) — честный Electron-блоб: свои `.so` через `$ORIGIN`-rpath, два лаунчера (GUI + CLI через `extra_exec`), иконка + theming;
+- [`examples/blender`](../examples/blender) — офиц. prebuilt-tarball со своим `lib/` (авто на `LD_LIBRARY_PATH`) и data-деревом, `min_glibc` авто, svg-иконка + MIME; GPU/дисплей — с хоста;
+- [`examples/xonotic`](../examples/xonotic) — офиц. prebuilt-zip игры, `min_glibc`-страж, кросс-проверка по опубликованному SHA-512 («ответка» на 1.26 ГБ-блоб оригинала);
 - [`examples/appimage`](../examples/appimage) — обёртка над любым локальным AppImage (офлайн).
 
 ---

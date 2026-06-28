@@ -1,0 +1,44 @@
+# Installer-BS recipe: wrap the official VSCodium release tarball into one .bs.
+# Run on Linux x86_64:   ./bs make examples/vscodium/recipe
+#
+# Why this exists (the HONEST bundle): VSCodium is an Electron app. By
+# construction it ships its own Chromium, its own Node, and its private shared
+# libraries (libffmpeg.so, libGLESv2.so, libvulkan.so.1, ...) that the main
+# binary loads via an $ORIGIN rpath — a genuinely self-contained ~400 MB blob.
+# And that is fine: this is what "bundle everything" looks like when the program
+# is actually built that way, versus the original Installer-SH, which padded
+# packages and faked the all-in-one. We repack the upstream tarball verbatim: the
+# main binary stays at the package root next to its libraries (so the rpath keeps
+# resolving), `vscodium` launches the GUI, and the `codium` CLI rides along via
+# extra_exec. Nothing is compiled; this is the telemetry-free VS Code build.
+
+name=vscodium
+pretty_name=VSCodium
+version=1.121.03429
+arch=x86_64
+os=linux
+exec=codium
+extra_exec=bin/codium
+comment="Free/Libre distribution of VS Code, without Microsoft telemetry"
+categories="Development;IDE;TextEditor;"
+terminal=false
+icon=resources/app/resources/linux/code.png
+icon_size=1024
+
+# Upstream artifact, pinned by sha256. Bumping `version` without re-pinning fails
+# loudly on the checksum — the point.
+sources=(
+	"https://github.com/VSCodium/vscodium/releases/download/${version}/VSCodium-linux-x64-${version}.tar.gz"
+)
+sha256s=(
+	2c9b06735d4c1face570935f4968d358f9f6269f5d9237813d0b825c7d70a143
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	# The tarball is a flat tree (binary + libraries + resources at the top), so
+	# it extracts straight into the package: the main `codium` binary lands next
+	# to its $ORIGIN-rpath libraries. We deliberately do NOT move the .so files
+	# into lib/ — they are found relative to the binary, the Electron way.
+	tar -xzf "$srcdir/VSCodium-linux-x64-${version}.tar.gz" -C "$pkgdir" || return 1
+}

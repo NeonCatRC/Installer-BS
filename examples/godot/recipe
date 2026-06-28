@@ -1,0 +1,37 @@
+# Installer-BS recipe: wrap the official Godot editor into one .bs.
+# Run on Linux x86_64:   ./bs make examples/godot/recipe
+#
+# Why this exists (one file is the whole program): Godot ships its editor, the
+# 2D/3D engine, the debugger and the export runtime as a SINGLE self-contained
+# executable. There is nothing to install — upstream's "installation" is "unzip
+# and run the binary". That is the reductio ad absurdum of the original project's
+# premise: a hand-edited ~2000-line installer.sh to deliver a program that is one
+# file you can already just run. Here the recipe verifies the upstream zip,
+# pulls out the one binary, and that is the entire package.
+
+name=godot
+pretty_name=Godot Engine
+version=4.7
+arch=x86_64
+os=linux
+exec=bin/godot
+comment="Multi-platform 2D and 3D game engine"
+categories="Development;IDE;"
+terminal=false
+
+# Upstream artifact, pinned by sha256. Bumping `version` without re-pinning fails
+# loudly on the checksum — the point.
+sources=(
+	"https://github.com/godotengine/godot/releases/download/${version}-stable/Godot_v${version}-stable_linux.x86_64.zip"
+)
+sha256s=(
+	0b1a6c54c2c619c12e169fe9241edda4b81080b519451cec2984bf0d2c6cb73c
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	bs_zip_extract "$srcdir/Godot_v${version}-stable_linux.x86_64.zip" "$srcdir/g" || return 1
+	mkdir -p "$pkgdir/bin"
+	cp -- "$srcdir/g/Godot_v${version}-stable_linux.x86_64" "$pkgdir/bin/godot"
+	chmod +x "$pkgdir/bin/godot"
+}
