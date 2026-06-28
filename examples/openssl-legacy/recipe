@@ -1,0 +1,60 @@
+# Installer-BS recipe: keep a program alive by bundling its orphaned libraries.
+# Run on Linux x86_64:   ./bs make examples/openssl-legacy/recipe
+#
+# Why this exists (the ONE honest portability trick, shown on a real case):
+# bundling .so files and pointing LD_LIBRARY_PATH at them is the single legitimate
+# "runs anywhere" mechanism — the same one AppImage uses. The original Installer-SH
+# gestured at portability by stuffing binaries into a blob; here is the mechanism
+# done properly, on a program that genuinely needs it.
+#
+# The OpenSSL 1.1.1 CLI links libssl.so.1.1 / libcrypto.so.1.1. Modern distros
+# (Ubuntu 24.04, Debian 12, ...) ship only OpenSSL 3 — so the 1.1 binary dies at
+# load time with "libssl.so.1.1: cannot open shared object file". This is exactly
+# the case the automatic bundler (bundle_libs=true, see examples/greeter) CANNOT
+# solve: it resolves deps with the host's loader, and the orphaned library is not
+# on any modern host to copy. So we fetch the library from upstream's archived
+# package and place it in lib/ ourselves; the runtime then adds lib/ to
+# LD_LIBRARY_PATH and the binary loads its own copy.
+#
+# Honest boundary (same rule as everywhere): we bundle the application libraries,
+# never libc or the dynamic loader — those stay the host's and are forward
+# compatible, exactly as AppImage does. min_glibc is auto-detected across the
+# bundled ELF files, so the package still warns clearly on a too-old host.
+
+name=openssl-legacy
+pretty_name="OpenSSL 1.1 (bundled)"
+version=1.1.1f
+arch=x86_64
+os=linux
+exec=bin/openssl
+comment="OpenSSL 1.1.1 CLI, kept runnable by bundling its now-orphaned libraries"
+categories="Utility;ConsoleOnly;Security;"
+terminal=true
+bundle_libs=false   # the orphaned libs are placed by hand (see the note above)
+
+# Upstream artifacts from the Ubuntu 20.04 (focal) security pool, pinned by
+# sha256 — the binary plus the libssl1.1 package that carries the two .so it
+# needs. Bumping `version` without re-pinning fails loudly on the checksum.
+sources=(
+	"http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/openssl_${version}-1ubuntu2.24_amd64.deb"
+	"http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_${version}-1ubuntu2.24_amd64.deb"
+)
+sha256s=(
+	a595ba61adb73a39076720776767dc0edb9cb7fdbe5407c08343ef27fe493c4a
+	7cf39d70a639017d1dd7c8d36daa2258063608688e449fddf40ffdd46f992a78
+)
+
+prepare() {
+	bs_fetch_all || return 1
+	# .deb is an `ar` archive with data.tar.* inside — no dpkg needed.
+	bs_deb_extract "$srcdir/openssl_${version}-1ubuntu2.24_amd64.deb"   "$srcdir/o" || return 1
+	bs_deb_extract "$srcdir/libssl1.1_${version}-1ubuntu2.24_amd64.deb" "$srcdir/l" || return 1
+
+	mkdir -p "$pkgdir/bin" "$pkgdir/lib"
+	cp -- "$srcdir/o/usr/bin/openssl" "$pkgdir/bin/openssl"
+	chmod +x "$pkgdir/bin/openssl"
+	# The two orphaned libraries the binary needs. The runtime puts lib/ on
+	# LD_LIBRARY_PATH, so the binary loads these instead of the host's OpenSSL 3.
+	cp -- "$srcdir/l/usr/lib/x86_64-linux-gnu/libssl.so.1.1"    "$pkgdir/lib/"
+	cp -- "$srcdir/l/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1" "$pkgdir/lib/"
+}

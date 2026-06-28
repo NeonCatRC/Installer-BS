@@ -125,6 +125,7 @@ source_sha256=<hash>      # пусто → скачается без прове�
 - [`examples/godot`](../examples/godot) — весь движок/редактор в одном самодостаточном бинаре;
 - [`examples/vscodium`](../examples/vscodium) — честный Electron-блоб: свои `.so` через `$ORIGIN`-rpath, два лаунчера (GUI + CLI через `extra_exec`), иконка + theming;
 - [`examples/blender`](../examples/blender) — офиц. prebuilt-tarball со своим `lib/` (авто на `LD_LIBRARY_PATH`) и data-деревом, `min_glibc` авто, svg-иконка + MIME; GPU/дисплей — с хоста;
+- [`examples/openssl-legacy`](../examples/openssl-legacy) — бандл осиротевших `.so` + `LD_LIBRARY_PATH`: OpenSSL 1.1 (его `libssl.so.1.1`/`libcrypto.so.1.1` выпилены из современных дистров) оживает за счёт вложенных в `lib/` библиотек из архивного пакета — ручной бандл, который `bundle_libs` авто не закроет (либы нет на хосте);
 - [`examples/xonotic`](../examples/xonotic) — офиц. prebuilt-zip игры, `min_glibc`-страж, кросс-проверка по опубликованному SHA-512 («ответка» на 1.26 ГБ-блоб оригинала);
 - [`examples/appimage`](../examples/appimage) — обёртка над любым локальным AppImage (офлайн).
 
@@ -141,6 +142,12 @@ ELF-бинарь, а хост — той же архитектуры (`ldd` ре
 
 Рабочий пример: [`examples/greeter`](../examples/greeter) — C-приложение со **своей** `libgreet.so`.
 Проверено: на системе, где библиотеки нет, пакет всё равно запускается — `.so` берётся из бандла.
+
+Когда нужной `.so` нет даже на **билд-хосте** (классика — осиротевшая `libssl.so.1.1`: современные
+дистрибутивы несут только OpenSSL 3), авто-сборщик бессилен: `ldd` нечего копировать. Тогда библиотеку
+кладут в `lib/` вручную в `prepare()` (вытащив из архивного пакета), а раннтайм всё равно подхватит её
+через `LD_LIBRARY_PATH`. Живой пример — [`examples/openssl-legacy`](../examples/openssl-legacy): бинарь
+OpenSSL 1.1 без бандла падает с «`libssl.so.1.1: cannot open shared object file`», а из `.bs` работает.
 
 **3.2. Сложные GUI-приложения (Qt/GTK).** Тут `ldd` мало: фреймворки догружают плагины через
 `dlopen` (Qt platform-плагины и т.п.), которые `ldd` не видит. Их копируют отдельно и задают

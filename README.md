@@ -165,7 +165,8 @@ Qt-рантайм; GUI требует дисплея (как и AppImage), по�
 - [`examples/helix`](examples/helix) — редактор и его `runtime/` (граммары/темы, ~190 МБ) ездят рядом с бинарём, тонкий лаунчер выставляет `HELIX_RUNTIME`: данные как данные, не вкомпилены в монолит;
 - [`examples/godot`](examples/godot) — весь движок и редактор в **одном** самодостаточном бинаре: «установка» апстрима = «распакуй и запусти», что обнуляет саму идею инсталлятора;
 - [`examples/vscodium`](examples/vscodium) — честный Electron-блоб (~370 МБ): свои библиотеки через `$ORIGIN`-rpath, два лаунчера (`vscodium` GUI + `codium` CLI). Так выглядит «всё-в-одном», когда оно настоящее, а не раздутое;
-- [`examples/blender`](examples/blender) — офиц. prebuilt-tarball со своим `lib/` и data-деревом: компилировать не нужно, `min_glibc` пишется автоматически, svg-иконка → `hicolor/scalable` + MIME. Честная граница: GPU-драйвер и дисплей берутся с хоста (как в [`examples/xonotic`](examples/xonotic)) — поэтому GUI тестируется на десктопе/в VM.
+- [`examples/blender`](examples/blender) — офиц. prebuilt-tarball со своим `lib/` и data-деревом: компилировать не нужно, `min_glibc` пишется автоматически, svg-иконка → `hicolor/scalable` + MIME. Честная граница: GPU-драйвер и дисплей берутся с хоста (как в [`examples/xonotic`](examples/xonotic)) — поэтому GUI тестируется на десктопе/в VM;
+- [`examples/openssl-legacy`](examples/openssl-legacy) — витрина бандла `.so` + `LD_LIBRARY_PATH`: бинарь OpenSSL 1.1, который на современном дистрибутиве падает («`libssl.so.1.1` не найден» — там уже OpenSSL 3), оживает за счёт вложенных в `lib/` осиротевших библиотек. Это случай, который авто-сборщик `bundle_libs=true` не закроет — библиотеки нет даже на билд-хосте, поэтому её тянут из архивного пакета и кладут в `lib/` вручную.
 
 ### Размеры — честно (Krita 5.2.x, x86_64, Linux)
 
